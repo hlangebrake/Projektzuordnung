@@ -2692,9 +2692,17 @@
         .toLowerCase();
     }
 
+    function findHeaderIndex(header, candidates) {
+      for (const candidate of candidates) {
+        const idx = header.findIndex((value) => value === candidate);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    }
+
     function parseProjectLabel(label) {
       const text = normalizeName(label);
-      const match = text.match(/^(\d+)\s*[-–—:]\s*(.+)$/);
+      const match = text.match(/^(\d+)(?:\s*[-:]\s*|\s+)(.+)$/);
       if (match) {
         return {
           number: Number(match[1]),
@@ -2896,13 +2904,13 @@
     }
 
     function parseProjectAssignmentRows(rows, sourceName = '') {
-      if (!rows.length) throw new Error('Die gewählte Tabelle ist leer.');
-      const header = rows[0].map(v => String(v).trim().toLowerCase());
-      const answerIdx = header.findIndex(v => v === 'antwort');
-      const teilnehmerIdx = header.findIndex(v => v === 'teilnehmer');
-      const anzahlIdx = header.findIndex(v => v === 'anzahl');
+      if (!rows.length) throw new Error('Die Tabelle ist leer.');
+      const header = rows[0].map(normalizeHeaderToken);
+      const answerIdx = findHeaderIndex(header, ['antwort', 'titel']);
+      const teilnehmerIdx = findHeaderIndex(header, ['teilnehmer']);
+      const anzahlIdx = findHeaderIndex(header, ['anzahl']);
       if (answerIdx < 0 || teilnehmerIdx < 0) {
-        throw new Error('Die Tabelle benötigt mindestens die Spalten „Antwort“ und „Teilnehmer“.');
+        throw new Error('Die Tabelle benötigt mindestens die Spalten „Antwort“ oder „Titel“ sowie „Teilnehmer“.');
       }
 
       const projects = [];
@@ -2911,13 +2919,13 @@
       let projectCounter = 0;
 
       for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
+        const row = rows[i] || [];
         const projectLabel = parseProjectLabel(row[answerIdx]);
         const projectName = projectLabel.full;
         if (!projectName) continue;
         const statedCount = anzahlIdx >= 0 ? Number(row[anzahlIdx]) || 0 : 0;
         const participantText = String(row[teilnehmerIdx] || '');
-        const participants = participantText.split(/\r?\n/).map(normalizeName).filter(Boolean);
+        const participants = [...new Set(participantText.split(/[\r\n,]+/).map(normalizeName).filter(Boolean))];
         const projectId = `P${projectCounter++}`;
         projects.push({
           id: projectId,
@@ -2983,7 +2991,7 @@
       const projectMap = new Map();
       let currentKey = '';
       let currentProject = null;
-      const projectLineRegex = /^(\d+)\s*[-–—:]\s*(.+?)\s+(\d+)$/;
+      const projectLineRegex = /^(\d+)(?:\s*[-:]\s*|\s+)(.+?)\s+(\d+)$/;
       const noiseMatchers = [
         /^umfrageergebnisse /i,
         /^frage /i,
@@ -3053,8 +3061,8 @@
       for (const name of workbook.SheetNames) {
         const ws = workbook.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-        const header = (rows[0] || []).map(v => String(v).trim().toLowerCase());
-        if (header.includes('antwort') && header.includes('teilnehmer')) {
+        const header = (rows[0] || []).map(normalizeHeaderToken);
+        if ((header.includes('antwort') || header.includes('titel')) && header.includes('teilnehmer')) {
           return { name, rows };
         }
       }
@@ -3072,24 +3080,122 @@
       return parseProjectAssignmentRows(source.rows, source.name);
     }
 
+    function mergeProjectAssignmentData(baseData, incomingData) {
+      if (!baseData) return incomingData;
+      if (!incomingData) return baseData;
+
+      const mergedProjects = [];
+      const projectIdByKey = new Map();
+      const projectMetaById = new Map();
+      let nextProjectIndex = 0;
+
+      const ensureProject = (project) => {
+        const numberToken = Number.isFinite(Number(project.number)) ? String(Number(project.number)) : '';
+        const titleToken = normalizeName(project.name || project.shortName || '');
+        const key = numberToken ? `nr:${numberToken}` : `title:${titleToken}`;
+        if (projectIdByKey.has(key)) {
+          const existingId = projectIdByKey.get(key);
+          const meta = projectMetaById.get(existingId);
+          meta.choosersCount = Math.max(meta.choosersCount || 0, Number(project.choosersCount) || 0);
+          meta.statedCount = Math.max(meta.statedCount || 0, Number(project.statedCount) || 0);
+          if (!meta.capacity && project.capacity) meta.capacity = project.capacity;
+          if (!meta.minFill && project.minFill) meta.minFill = project.minFill;
+          if ((!meta.allowedYears || !meta.allowedYears.length) && project.allowedYears?.length) meta.allowedYears = [...project.allowedYears];
+          return existingId;
+        }
+        const newId = `P${nextProjectIndex++}`;
+        const meta = {
+          id: newId,
+          number: Number.isFinite(Number(project.number)) ? Number(project.number) : nextProjectIndex,
+          shortName: project.shortName || project.name || '',
+          name: project.name || project.shortName || '',
+          choosersCount: Number(project.choosersCount) || 0,
+          statedCount: Number(project.statedCount) || 0,
+          capacity: Number(project.capacity) || 0,
+          minFill: Number(project.minFill) || 0,
+          allowedYears: [...(project.allowedYears || [])]
+        };
+        projectIdByKey.set(key, newId);
+        projectMetaById.set(newId, meta);
+        mergedProjects.push(meta);
+        return newId;
+      };
+
+      const mergedStudentProjects = new Map();
+      const ensureStudentChoices = (studentName) => {
+        if (!mergedStudentProjects.has(studentName)) mergedStudentProjects.set(studentName, new Set());
+        return mergedStudentProjects.get(studentName);
+      };
+      const appendData = (data) => {
+        data.projects.forEach((project) => ensureProject(project));
+        data.students.forEach((student) => {
+          const targetSet = ensureStudentChoices(student.name);
+          for (const oldProjectId of (data.choiceMap.get(student.id) || new Set())) {
+            const project = data.projects.find((entry) => entry.id === oldProjectId);
+            if (!project) continue;
+            targetSet.add(ensureProject(project));
+          }
+        });
+      };
+
+      appendData(baseData);
+      appendData(incomingData);
+
+      mergedProjects.forEach((project) => {
+        let count = 0;
+        for (const choices of mergedStudentProjects.values()) {
+          if (choices.has(project.id)) count += 1;
+        }
+        project.choosersCount = Math.max(count, project.statedCount || 0);
+      });
+
+      const students = [...mergedStudentProjects.keys()]
+        .sort((a, b) => a.localeCompare(b, 'de'))
+        .map((name, idx) => ({ id: `S${idx}`, name }));
+      const choiceMap = new Map();
+      students.forEach((student) => choiceMap.set(student.id, new Set(mergedStudentProjects.get(student.name) || [])));
+
+      return {
+        sourceSheet: [baseData.sourceSheet, incomingData.sourceSheet].filter(Boolean).join(' + '),
+        students,
+        projects: mergedProjects,
+        choiceMap,
+        classMap: baseData.classMap || new Map(),
+        yearMap: baseData.yearMap || new Map(),
+        classGroups: baseData.classGroups || [],
+        yearGroups: baseData.yearGroups || [],
+        classCoverage: baseData.classCoverage || { matchedCount: 0, unmatchedCount: students.length, importedOnlyCount: 0 },
+        projectInfoCoverage: baseData.projectInfoCoverage || { matchedCount: 0, unmatchedCount: mergedProjects.length }
+      };
+    }
+
     function parseClassWorkbook(workbook) {
       const source = detectSourceSheet(workbook);
       if (!source) throw new Error('Keine verwertbare Tabelle gefunden.');
       const rows = source.rows;
       if (!rows.length) throw new Error('Die gewählte Tabelle ist leer.');
 
-      const header = rows[0].map(v => String(v).trim().toLowerCase());
-      const teilnehmerIdx = header.findIndex(v => v === 'teilnehmer');
-      const klasseIdx = header.findIndex(v => v === 'klasse');
-      if (teilnehmerIdx < 0 || klasseIdx < 0) {
-        throw new Error('Die Tabelle benötigt die Spalten „Teilnehmer“ und „Klasse“.');
+      const header = rows[0].map(normalizeHeaderToken);
+      const teilnehmerIdx = findHeaderIndex(header, ['teilnehmer']);
+      const klasseIdx = findHeaderIndex(header, ['klasse']);
+      const nachnameIdx = findHeaderIndex(header, ['schuelernachname']);
+      const rufnameIdx = findHeaderIndex(header, ['schuelerrufname']);
+      const gruppeIdx = findHeaderIndex(header, ['gruppebezeichnung']);
+      const hasClassicColumns = teilnehmerIdx >= 0 && klasseIdx >= 0;
+      const hasDerivedColumns = nachnameIdx >= 0 && rufnameIdx >= 0 && gruppeIdx >= 0;
+      if (!hasClassicColumns && !hasDerivedColumns) {
+        throw new Error('Die Tabelle benötigt entweder die Spalten „Teilnehmer“ und „Klasse“ oder alternativ „SchuelerNachname“, „SchuelerRufname“ und „GruppeBezeichnung“.');
       }
 
       const byName = new Map();
       for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const studentName = normalizeName(row[teilnehmerIdx]);
-        const className = normalizeName(row[klasseIdx]);
+        const row = rows[i] || [];
+        const studentName = hasClassicColumns
+          ? normalizeName(row[teilnehmerIdx])
+          : normalizeName(`${normalizeName(row[rufnameIdx])} ${normalizeName(row[nachnameIdx])}`);
+        const className = hasClassicColumns
+          ? normalizeName(row[klasseIdx])
+          : normalizeName(row[gruppeIdx]);
         if (!studentName || !className) continue;
         const match = className.match(/\d+/);
         const yearGroup = match ? String(Number(match[0])) : '';
@@ -4337,36 +4443,43 @@
       if (state.glpk) return state.glpk;
 
       const errors = [];
+      const isFileProtocol = window.location.protocol === 'file:';
       const moduleCandidates = [
         { label: 'lokales Modul', url: './vendor/glpk/index.js' }
       ];
       const scriptCandidates = [
+        { label: 'lokales Doppelklick-Bundle', url: './vendor/glpk/index.global.js' },
         { label: 'lokales UMD-Skript', url: './vendor/glpk/glpk.js' }
       ];
       const wasmLocator = (path) => (path === 'glpk.wasm' ? './vendor/glpk/glpk.wasm' : `./vendor/glpk/${path}`);
 
-      for (const candidate of moduleCandidates) {
-        try {
-          const mod = await import(candidate.url);
-          const factory = mod?.default || mod?.GLPK || window.GLPK;
-          if (typeof factory !== 'function') {
-            throw new Error('kein initialisierbarer Export gefunden');
+      if (!isFileProtocol) {
+        for (const candidate of moduleCandidates) {
+          try {
+            const mod = await import(candidate.url);
+            const factory = mod?.default || mod?.GLPK || window.GLPK;
+            if (typeof factory !== 'function') {
+              throw new Error('kein initialisierbarer Export gefunden');
+            }
+            state.glpk = await factory({ locateFile: wasmLocator });
+            state.glpkSource = candidate.label;
+            return state.glpk;
+          } catch (err) {
+            errors.push(`${candidate.label}: ${err?.message || err}`);
           }
-          state.glpk = await factory({ locateFile: wasmLocator });
-          state.glpkSource = candidate.label;
-          return state.glpk;
-        } catch (err) {
-          errors.push(`${candidate.label}: ${err?.message || err}`);
         }
       }
 
       for (const candidate of scriptCandidates) {
         try {
           await loadScript(candidate.url);
-          if (typeof window.GLPK !== 'function') {
+          const factory = window.GLPK;
+          if (typeof factory !== 'function') {
             throw new Error('window.GLPK nicht gefunden');
           }
-          state.glpk = await window.GLPK({ locateFile: wasmLocator });
+          state.glpk = isFileProtocol && candidate.url.endsWith('index.global.js')
+            ? await factory()
+            : await factory({ locateFile: wasmLocator });
           state.glpkSource = candidate.label;
           return state.glpk;
         } catch (err) {
@@ -4374,7 +4487,7 @@
         }
       }
 
-      throw new Error('glpk.js konnte nicht lokal geladen werden. Erwartet werden ./vendor/glpk/index.js oder ./vendor/glpk/glpk.js plus ./vendor/glpk/glpk.wasm. Details: ' + errors.join(' | '));
+      throw new Error('glpk.js konnte nicht lokal geladen werden. Erwartet werden ./vendor/glpk/index.js oder ./vendor/glpk/index.global.js oder ./vendor/glpk/glpk.js plus ggf. ./vendor/glpk/glpk.wasm. Details: ' + errors.join(' | '));
     }
 
     function stageDisplayName(stage) {
@@ -7583,8 +7696,9 @@
         const ws = workbook.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
         const header = (rows[0] || []).map(normalizeHeaderToken);
-        const hasProjectAssignments = header.includes('antwort') && header.includes('teilnehmer');
-        const hasClassAssignments = header.includes('teilnehmer') && header.includes('klasse');
+        const hasProjectAssignments = (header.includes('antwort') || header.includes('titel')) && header.includes('teilnehmer');
+        const hasClassAssignments = (header.includes('teilnehmer') && header.includes('klasse'))
+          || (header.includes('schuelernachname') && header.includes('schuelerrufname') && header.includes('gruppebezeichnung'));
         const hasProjectInfo = header.some(v => v.includes('wie viele sus konnen teilnehmen'))
           && header.some(v => v.includes('welche jahrgange sind angesprochen'));
         if (hasProjectAssignments) results.push({ kind: 'project', sheetName: name });
@@ -7660,7 +7774,8 @@
       try {
         setStatus(els.loadStatus, 'warn', `Lade Projektdatei <strong>${escapeHtml(file.name)}</strong> ...`);
         const workbook = dataOverride ? null : (workbookOverride || await readWorkbookFromFile(file));
-        state.data = dataOverride || parseWorkbook(workbook);
+        const incomingData = dataOverride || parseWorkbook(workbook);
+        state.data = state.data ? mergeProjectAssignmentData(state.data, incomingData) : incomingData;
         state.pairs = { friends: [], conflicts: [] };
         attachClassImportToData();
         applyProjectInfoToData();
@@ -7673,7 +7788,7 @@
         renderAnalysis(null);
         preparePrintReport();
         manageExportButtons();
-        setStatus(els.loadStatus, 'ok', `Projektzuordnung geladen. Quelle: <strong>${escapeHtml(state.data.sourceSheet)}</strong>.`);
+        setStatus(els.loadStatus, 'ok', `Projektzuordnung geladen bzw. ergänzt. Quelle: <strong>${escapeHtml(state.data.sourceSheet)}</strong>.`);
       } catch (err) {
         console.error(err);
         setStatus(els.loadStatus, 'err', `Fehler beim Laden der Projektdatei: ${escapeHtml(err.message || String(err))}`);
