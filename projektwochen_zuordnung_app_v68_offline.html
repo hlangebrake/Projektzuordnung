@@ -1380,6 +1380,53 @@
       flex-direction: column;
       gap: 10px;
     }
+    .analysis-project-year-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+    .analysis-project-year-table th,
+    .analysis-project-year-table td {
+      border: 1px solid var(--line);
+      padding: 6px 8px;
+      vertical-align: middle;
+    }
+    .analysis-project-year-table th {
+      background: #f8fbff;
+      color: var(--muted);
+      font-weight: 700;
+      text-align: left;
+    }
+    .analysis-project-year-project {
+      font-weight: 600;
+      color: #162033;
+      word-break: break-word;
+    }
+    .analysis-project-year-cell {
+      min-width: 92px;
+    }
+    .analysis-project-year-track {
+      height: 18px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+      position: relative;
+    }
+    .analysis-project-year-segment {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 4px;
+    }
     .analysis-rank-row {
       display: grid;
       grid-template-columns: minmax(130px, 240px) minmax(0, 1fr) minmax(76px, auto);
@@ -3737,11 +3784,12 @@
         const projectNumber = Number(row[projectNumberIdx]);
         const studentName = normalizeName(row[studentIdx]);
         const specialKind = normalizeHeaderToken(row[specialIdx]);
-        if (!Number.isFinite(projectNumber) || !studentName || !specialKind) continue;
-        if (specialKind !== 'vorher' && specialKind !== 'nachher' && specialKind !== 'falls gewunscht') continue;
+        if (!studentName || !specialKind) continue;
+        if (specialKind !== 'vorher' && specialKind !== 'nachher' && specialKind !== 'falls gewunscht' && specialKind !== 'garnicht') continue;
+        if (specialKind !== 'garnicht' && !Number.isFinite(projectNumber)) continue;
         entries.push({
           rowIndex: i + 1,
-          projectNumber,
+          projectNumber: Number.isFinite(projectNumber) ? projectNumber : null,
           studentName,
           specialKind
         });
@@ -3754,8 +3802,10 @@
         sourceSheet: specialImport?.sourceSheet || '',
         entries: [],
         validEntries: [],
+        excludedEntries: [],
         beforeEntries: [],
         afterEntries: [],
+        excludedStudentIds: new Set(),
         ignoredStudentIds: new Set(),
         beforeAssignedMap: new Map(),
         afterAssignedMap: new Map(),
@@ -3773,11 +3823,20 @@
 
       (specialImport.entries || []).forEach((entry) => {
         const student = studentByName.get(entry.studentName);
-        const project = projectByNumber.get(Number(entry.projectNumber));
         if (!student) {
           unmatchedStudents.push(entry);
           return;
         }
+        if (entry.specialKind === 'garnicht') {
+          resolvedEntries.push({
+            ...entry,
+            studentId: student.id,
+            projectId: null,
+            projectName: ''
+          });
+          return;
+        }
+        const project = projectByNumber.get(Number(entry.projectNumber));
         if (!project) {
           unmatchedProjects.push(entry);
           return;
@@ -3793,6 +3852,7 @@
       const latestByStudentId = new Map();
       resolvedEntries.forEach((entry) => latestByStudentId.set(entry.studentId, entry));
       const validEntries = [...latestByStudentId.values()].sort((a, b) => a.rowIndex - b.rowIndex);
+      const excludedEntries = validEntries.filter((entry) => entry.specialKind === 'garnicht');
       const unconditionalBeforeEntries = validEntries.filter((entry) => entry.specialKind === 'vorher');
       const conditionalBeforeCandidates = validEntries.filter((entry) => entry.specialKind === 'falls gewunscht');
       const afterEntries = validEntries.filter((entry) => entry.specialKind === 'nachher');
@@ -3802,7 +3862,9 @@
       });
       const beforeEntries = [...unconditionalBeforeEntries, ...wishedConditionalBeforeEntries]
         .sort((a, b) => a.rowIndex - b.rowIndex);
+      const excludedStudentIds = new Set(excludedEntries.map((entry) => entry.studentId));
       const ignoredStudentIds = new Set([
+        ...excludedEntries.map((entry) => entry.studentId),
         ...beforeEntries.map((entry) => entry.studentId),
         ...afterEntries.map((entry) => entry.studentId)
       ]);
@@ -3825,8 +3887,10 @@
         sourceSheet: specialImport.sourceSheet || '',
         entries: resolvedEntries,
         validEntries,
+        excludedEntries,
         beforeEntries,
         afterEntries,
+        excludedStudentIds,
         ignoredStudentIds,
         beforeAssignedMap,
         afterAssignedMap,
@@ -3955,7 +4019,7 @@
         projectLoadAdjustments.set(projectId, (projectLoadAdjustments.get(projectId) || 0) + 1);
       });
 
-      const students = (data.students || []).filter((student) => !ignoredStudentIds.has(student.id)).map((student) => ({ ...student }));
+      const students = getVisibleStudents(data).filter((student) => !ignoredStudentIds.has(student.id)).map((student) => ({ ...student }));
       const projects = (data.projects || []).map((project) => {
         const reserved = projectLoadAdjustments.get(project.id) || 0;
         return {
@@ -4229,6 +4293,15 @@
           else project[field] = asInt(e.target.value, 0);
         });
       });
+    }
+
+    function getExcludedStudentIds(data = state.data, specialImport = state.specialImport) {
+      return buildResolvedSpecialImport(data, specialImport).excludedStudentIds || new Set();
+    }
+
+    function getVisibleStudents(data = state.data, specialImport = state.specialImport) {
+      const excludedIds = getExcludedStudentIds(data, specialImport);
+      return (data?.students || []).filter((student) => !excludedIds.has(student.id));
     }
     function renderStudentSelects() {
       const options = ['<option value="">Bitte w�hlen</option>']
@@ -4967,7 +5040,7 @@
     function assignmentMapToStructured(data, assignmentMap) {
       const byStudent = [];
       const byProject = new Map(data.projects.map((project) => [project.id, []]));
-      data.students.forEach((student) => {
+      getVisibleStudents(data).forEach((student) => {
         const assignedProject = assignmentMap.get(student.id) || null;
         byStudent.push({ studentId: student.id, studentName: student.name, projectId: assignedProject });
         if (assignedProject && byProject.has(assignedProject)) {
@@ -7526,18 +7599,28 @@
       return `background: conic-gradient(${parts.join(', ')})`;
     }
 
+    function getAnalysisYearColor(yearLabel, index = 0) {
+      const numeric = parseYearGroup(yearLabel);
+      const base = Number.isFinite(numeric) ? numeric : index + 1;
+      const hue = (base * 37) % 360;
+      return `hsl(${hue} 68% 58%)`;
+    }
+
     function computeDetailedAnalysis(assignments) {
       if (!state.data) return null;
       const byStudent = assignments?.byStudent || [];
       const assignmentMap = new Map(byStudent.map((row) => [row.studentId, row.projectId]));
       const projectMap = new Map(state.data.projects.map((project, idx) => [project.id, { project, idx }]));
+      const visibleStudents = getVisibleStudents(state.data);
+      const resolvedSpecial = buildResolvedSpecialImport(state.data, state.specialImport);
       const classStats = new Map();
       const cohortStats = new Map();
       const choiceDistribution = new Map();
       const outsideWishStudents = [];
       const ignoredWishStudents = [];
+      const unassignedStudents = [];
 
-      state.data.students.forEach((student) => {
+      visibleStudents.forEach((student) => {
         const className = getStudentDisplayClass(student.id);
         const yearRaw = state.data.yearMap?.get(student.id);
         const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
@@ -7550,6 +7633,18 @@
         const hasChosenAssignment = assignedProjectId ? choices.has(assignedProjectId) : false;
 
         choiceDistribution.set(choiceCount, (choiceDistribution.get(choiceCount) || 0) + 1);
+
+        if (!assignedProjectId) {
+          unassignedStudents.push({
+            studentId: student.id,
+            name: student.name,
+            className,
+            yearValue,
+            yearLabel,
+            choiceCount,
+            reason: 'Keine Zuordnung gefunden'
+          });
+        }
 
         if (!classStats.has(className)) {
           classStats.set(className, {
@@ -7687,13 +7782,96 @@
         return String(a.name).localeCompare(String(b.name), 'de');
       });
 
+      unassignedStudents.sort((a, b) => {
+        if (a.yearValue !== b.yearValue) return a.yearValue - b.yearValue;
+        const classCmp = String(a.className).localeCompare(String(b.className), 'de', { numeric: true, sensitivity: 'base' });
+        if (classCmp !== 0) return classCmp;
+        const surnameCmp = getStudentSurnameKey(a.name).localeCompare(getStudentSurnameKey(b.name), 'de');
+        if (surnameCmp !== 0) return surnameCmp;
+        return String(a.name).localeCompare(String(b.name), 'de');
+      });
+
+      (resolvedSpecial?.excludedEntries || []).forEach((entry) => {
+        const student = (state.data.students || []).find((candidate) => candidate.id === entry.studentId);
+        if (!student) return;
+        const className = getStudentDisplayClass(student.id);
+        const yearRaw = state.data.yearMap?.get(student.id);
+        const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+        const yearValue = parseYearGroup(yearRaw || className);
+        const choiceCount = (state.data.choiceMap?.get(student.id) || new Set()).size;
+        unassignedStudents.push({
+          studentId: student.id,
+          name: student.name,
+          className,
+          yearValue,
+          yearLabel,
+          choiceCount,
+          reason: 'Besonderheit "garnicht"'
+        });
+      });
+      unassignedStudents.sort((a, b) => {
+        if (a.yearValue !== b.yearValue) return a.yearValue - b.yearValue;
+        const classCmp = String(a.className).localeCompare(String(b.className), 'de', { numeric: true, sensitivity: 'base' });
+        if (classCmp !== 0) return classCmp;
+        const surnameCmp = getStudentSurnameKey(a.name).localeCompare(getStudentSurnameKey(b.name), 'de');
+        if (surnameCmp !== 0) return surnameCmp;
+        return String(a.name).localeCompare(String(b.name), 'de');
+      });
+
+      const projectYearDistributionRows = state.data.projects.map((project, idx) => {
+        const assignedRows = byStudent.filter((row) => row.projectId === project.id);
+        const yearCounts = new Map();
+        assignedRows.forEach((row) => {
+          const yearRaw = state.data.yearMap?.get(row.studentId);
+          const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+          yearCounts.set(yearLabel, (yearCounts.get(yearLabel) || 0) + 1);
+        });
+        const total = assignedRows.length;
+        const yearRows = [...yearCounts.entries()]
+          .map(([label, count], yearIndex) => ({
+            label,
+            count,
+            pct: total ? (count / total) * 100 : 0,
+            color: getAnalysisYearColor(label, yearIndex),
+            order: parseYearGroup(label)
+          }))
+          .sort((a, b) => {
+            if (a.order !== b.order) return a.order - b.order;
+            return String(a.label).localeCompare(String(b.label), 'de', { numeric: true, sensitivity: 'base' });
+          });
+        return {
+          projectId: project.id,
+          number: getProjectDisplayNumber(project, idx),
+          name: project.name,
+          total,
+          yearRows
+        };
+      }).sort((a, b) => Number(a.number) - Number(b.number));
+      const projectYearLabels = [...new Set(projectYearDistributionRows.flatMap((row) => row.yearRows.map((yearRow) => yearRow.label)))]
+        .sort((a, b) => {
+          const ay = parseYearGroup(a);
+          const by = parseYearGroup(b);
+          if (ay !== by) return ay - by;
+          return String(a).localeCompare(String(b), 'de', { numeric: true, sensitivity: 'base' });
+        });
+      const yearTotals = new Map(projectYearLabels.map((label) => [label, 0]));
+      projectYearDistributionRows.forEach((row) => {
+        row.yearRows.forEach((yearRow) => {
+          yearTotals.set(yearRow.label, (yearTotals.get(yearRow.label) || 0) + yearRow.count);
+        });
+      });
+
       return {
         projectStats,
         classRows,
         cohortRows,
         choiceDistributionRows,
+        unassignedStudents,
         outsideWishStudents,
         ignoredWishStudents,
+        projectYearDistributionRows,
+        projectYearLabels,
+        projectYearTotals: yearTotals,
         projectStatusCounts
       };
     }
@@ -8033,7 +8211,7 @@
         `;
       }).join('');
 
-      const outsideWishRows = (details?.outsideWishStudents || []).slice(0, 20).map((row) => `
+      const outsideWishRows = (details?.outsideWishStudents || []).map((row) => `
         <tr>
           <td>${escapeHtml(row.name)}</td>
           <td>${escapeHtml(row.className)}</td>
@@ -8041,6 +8219,51 @@
           <td>${escapeHtml(row.projectLabel)}</td>
         </tr>
       `).join('');
+      const unassignedRows = (details?.unassignedStudents || []).map((row) => `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.className)}</td>
+          <td>${escapeHtml(row.yearLabel)}</td>
+          <td>${row.choiceCount}</td>
+          <td>${escapeHtml(row.reason || '—')}</td>
+        </tr>
+      `).join('');
+      const projectYearDistributionTable = (details?.projectYearDistributionRows || []).length
+        ? `
+          <table class="analysis-project-year-table">
+            <thead>
+              <tr>
+                <th>Projekt</th>
+                ${(details?.projectYearLabels || []).map((label) => `<th>${escapeHtml(label)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${(details?.projectYearDistributionRows || []).map((row) => {
+                const rowMap = new Map((row.yearRows || []).map((yearRow) => [yearRow.label, yearRow]));
+                return `
+                  <tr>
+                    <td class="analysis-project-year-project">#${escapeHtml(String(row.number))} ${escapeHtml(row.name)}</td>
+                    ${(details?.projectYearLabels || []).map((label, index) => {
+                      const yearRow = rowMap.get(label) || null;
+                      const total = details?.projectYearTotals?.get(label) || 0;
+                      const count = yearRow?.count || 0;
+                      const pct = total > 0 ? (count / total) * 100 : 0;
+                      const color = getAnalysisYearColor(label, index);
+                      return `
+                        <td class="analysis-project-year-cell">
+                          <div class="analysis-project-year-track" title="${escapeHtml(`${label}: ${count} von ${total}`)}">
+                            ${count > 0 ? `<div class="analysis-project-year-segment" style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%; background:${escapeHtml(color)}">${count}</div>` : ''}
+                          </div>
+                        </td>
+                      `;
+                    }).join('')}
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `
+        : '';
 
       els.analysisChartsWrap.innerHTML = `
         <div class="analysis-toolbar">
@@ -8175,23 +8398,48 @@
                   <thead>
                     <tr><th>Name</th><th>Klasse</th><th>Jahrgang</th><th>Wünsche</th><th>Zuordnung</th></tr>
                   </thead>
-                  <tbody>${details.ignoredWishStudents.slice(0, 20).map((row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.className)}</td><td>${escapeHtml(row.yearLabel)}</td><td>${row.choiceCount}</td><td>${escapeHtml(row.projectLabel)}</td></tr>`).join('')}</tbody>
+                  <tbody>${details.ignoredWishStudents.map((row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.className)}</td><td>${escapeHtml(row.yearLabel)}</td><td>${row.choiceCount}</td><td>${escapeHtml(row.projectLabel)}</td></tr>`).join('')}</tbody>
                 </table>
-                <div class="analysis-mini-note">Es werden die ersten 20 Schüler gezeigt, deren Wünsche im Solver wegen zu weniger Einträge ignoriert werden.</div>
+                <div class="analysis-mini-note">Es werden alle Schüler gezeigt, deren Wünsche im Solver wegen zu weniger Einträge ignoriert werden.</div>
               ` : '<div class="analysis-note">Aktuell werden keine Schüler wegen zu weniger Wunscheinträge ignoriert.</div>'}
             </div>
-            <div class="analysis-block" style="margin-top:16px">
-              <h4>Schüler ohne Wunschzuordnung</h4>
-              ${details && details.outsideWishStudents.length ? `
-                <table class="analysis-table-like">
-                  <thead>
-                    <tr><th>Name</th><th>Klasse</th><th>Jahrgang</th><th>Zugeordnetes Projekt</th></tr>
-                  </thead>
-                  <tbody>${outsideWishRows}</tbody>
-                </table>
-                <div class="analysis-mini-note">Es werden die ersten 20 Schüler ohne Wunschzuordnung angezeigt, sortiert nach Jahrgang, Klasse und Nachname.</div>
-              ` : '<div class="analysis-note">Aktuell ist kein Schüler außerhalb seiner Wunschmenge zugeordnet.</div>'}
-            </div>
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Schüler Ohne Zuordnung</span><span class="metric-sub">Alle aktuell nicht zugeordneten Schüler im Überblick</span></summary>
+          <div class="analysis-collapse-body">
+            ${details && details.unassignedStudents.length ? `
+              <table class="analysis-table-like">
+                <thead>
+                  <tr><th>Name</th><th>Klasse</th><th>Jahrgang</th><th>Wünsche</th><th>Grund</th></tr>
+                </thead>
+                <tbody>${unassignedRows}</tbody>
+              </table>
+              <div class="analysis-mini-note">Es werden alle Schüler ohne Zuordnung angezeigt, einschließlich Fälle mit Besonderheit „garnicht“.</div>
+            ` : '<div class="analysis-note">Aktuell sind alle sichtbaren Schüler zugeordnet.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Jahrgangsverteilung Pro Projekt</span><span class="metric-sub">Balkendiagramm der Jahrgänge innerhalb jedes Projekts</span></summary>
+          <div class="analysis-collapse-body">
+            ${projectYearDistributionTable || '<div class="analysis-note">Noch keine Projektverteilung nach Jahrgängen verfügbar.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Schüler Ohne Wunschzuordnung</span><span class="metric-sub">Alle Schüler, die außerhalb ihrer Wunschmenge gelandet sind</span></summary>
+          <div class="analysis-collapse-body">
+            ${details && details.outsideWishStudents.length ? `
+              <table class="analysis-table-like">
+                <thead>
+                  <tr><th>Name</th><th>Klasse</th><th>Jahrgang</th><th>Zugeordnetes Projekt</th></tr>
+                </thead>
+                <tbody>${outsideWishRows}</tbody>
+              </table>
+              <div class="analysis-mini-note">Es werden alle Schüler ohne Wunschzuordnung angezeigt, sortiert nach Jahrgang, Klasse und Nachname.</div>
+            ` : '<div class="analysis-note">Aktuell ist kein Schüler außerhalb seiner Wunschmenge zugeordnet.</div>'}
           </div>
         </details>
 
@@ -8288,13 +8536,14 @@
 
     function summaryAoA() {
       if (!state.data) return [['Keine Daten geladen']];
-      const choiceCounts = state.data.students.map(s => (state.data.choiceMap.get(s.id) || new Set()).size);
+      const visibleStudents = getVisibleStudents(state.data);
+      const choiceCounts = visibleStudents.map(s => (state.data.choiceMap.get(s.id) || new Set()).size);
       const avgChoices = choiceCounts.length ? (choiceCounts.reduce((a, b) => a + b, 0) / choiceCounts.length).toFixed(2) : '0';
       const hard = activeHardRuleLabels();
       const soft = activeSoftRuleRows();
       const rows = [
         ['Metrik', 'Wert'],
-        ['Sch�ler', state.data.students.length],
+        ['Sch�ler', visibleStudents.length],
         ['Projekte', state.data.projects.length],
         ['Projektdatei / Blatt', state.data.sourceSheet || '�'],
         ['Klassendatei / Blatt', state.classImport?.sourceSheet || '�'],
@@ -8393,7 +8642,7 @@
       if (!state.data || !state.solution?.assignments) return [['Keine Ergebnisse vorhanden']];
       const assignmentMap = new Map((state.solution.assignments.byStudent || []).map((row) => [row.studentId, row.projectId]));
       const projectById = new Map((state.data.projects || []).map((project, idx) => [project.id, { project, idx }]));
-      const students = sortStudentsByName(state.data.students || []);
+      const students = sortStudentsByName(getVisibleStudents(state.data));
       const rows = students.map((student) => {
         const projectId = assignmentMap.get(student.id) || '';
         const entry = projectById.get(projectId);
