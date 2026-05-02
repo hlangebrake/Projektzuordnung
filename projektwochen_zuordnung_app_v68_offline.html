@@ -2595,11 +2595,15 @@
       const sourceIds = Array.isArray(candidateProjectIds) && candidateProjectIds.length
         ? candidateProjectIds
         : (data?.projects || []).map((project) => project.id);
-      const positiveCapacityIds = sourceIds.filter((projectId) => {
+      const allowedIds = sourceIds.filter((projectId) => {
+        const project = (data?.projects || []).find((entry) => entry.id === projectId);
+        return projectAllowsIgnoredStudent(project);
+      });
+      const positiveCapacityIds = allowedIds.filter((projectId) => {
         const project = (data?.projects || []).find((entry) => entry.id === projectId);
         return Number(project?.capacity || 0) > 0;
       });
-      return positiveCapacityIds.length ? positiveCapacityIds : [...sourceIds];
+      return positiveCapacityIds.length ? positiveCapacityIds : [...allowedIds];
     }
 
     function getIgnoredWishBalanceMode(config) {
@@ -3193,6 +3197,10 @@
       return ['ja', 'j', 'yes', 'y', 'true', '1', 'x'].includes(text);
     }
 
+    function projectAllowsIgnoredStudent(project) {
+      return !project?.noIgnored;
+    }
+
     function projectAllowsStudentYear(project, studentYear) {
       const allowed = project?.allowedYears || [];
       if (!allowed.length) return true;
@@ -3366,7 +3374,8 @@
           capacity: 0,
           minFill: 0,
           allowedYears: [],
-          exclusive: false
+          exclusive: false,
+          noIgnored: false
         });
 
         participants.forEach((studentName) => {
@@ -3532,6 +3541,7 @@
           if (!meta.minFill && project.minFill) meta.minFill = project.minFill;
           if ((!meta.allowedYears || !meta.allowedYears.length) && project.allowedYears?.length) meta.allowedYears = [...project.allowedYears];
           if (project.exclusive) meta.exclusive = true;
+          if (project.noIgnored) meta.noIgnored = true;
           return existingId;
         }
         const newId = `P${nextProjectIndex++}`;
@@ -3545,7 +3555,8 @@
           capacity: Number(project.capacity) || 0,
           minFill: Number(project.minFill) || 0,
           allowedYears: [...(project.allowedYears || [])],
-          exclusive: !!project.exclusive
+          exclusive: !!project.exclusive,
+          noIgnored: !!project.noIgnored
         };
         projectIdByKey.set(key, newId);
         projectMetaById.set(newId, meta);
@@ -3647,6 +3658,7 @@
       const allowedYearsIdx = header.findIndex(v => v.includes('welche jahrgange sind angesprochen'));
       const minFillIdx = header.findIndex(v => v === 'mindestbelegung' || v.includes('mindestbelegung'));
       const exclusiveIdx = header.findIndex(v => v === 'exklusiv' || v.includes('exklusiv'));
+      const noIgnoredIdx = header.findIndex(v => v === 'keine ignorierten' || v.includes('keine ignorierten'));
       if (capacityIdx < 0 || allowedYearsIdx < 0) {
         throw new Error('Die Tabelle benötigt die Spalten „Wie viele SuS können teilnehmen?“ und „Welche Jahrgänge sind angesprochen?“.');
       }
@@ -3661,12 +3673,14 @@
         const minFill = minFillIdx >= 0 ? parseCapacityValue(row[minFillIdx]) : 0;
         const allowedYears = parseAllowedYearsSpec(row[allowedYearsIdx]);
         const exclusive = exclusiveIdx >= 0 ? parseExclusiveValue(row[exclusiveIdx]) : false;
+        const noIgnored = noIgnoredIdx >= 0 ? parseExclusiveValue(row[noIgnoredIdx]) : false;
         byNumber.set(projectNumber, {
           number: projectNumber,
           capacity,
           minFill,
           allowedYears,
-          exclusive
+          exclusive,
+          noIgnored
         });
       }
       return { sourceSheet: source.name, byNumber };
@@ -3683,6 +3697,7 @@
         project.minFill = Number(info.minFill || 0);
         project.allowedYears = [...(info.allowedYears || [])];
         project.exclusive = !!info.exclusive;
+        project.noIgnored = !!info.noIgnored;
       });
       state.data.projectInfoCoverage = {
         matchedCount,
@@ -3836,7 +3851,7 @@
       const sourceStudentIds = buildIgnoredWishStudentIds(data).filter((studentId) => !blockedStudentIds.has(studentId));
       if (!sourceStudentIds.length) return { ...empty, active: true, sourceStudentIds: [] };
 
-      const candidateProjects = (data.projects || []).filter((project) => !isProjectExclusive(project));
+      const candidateProjects = (data.projects || []).filter((project) => !isProjectExclusive(project) && projectAllowsIgnoredStudent(project));
       if (!candidateProjects.length) {
         return {
           active: true,
@@ -3931,11 +3946,12 @@
         ...((hardIgnoredPreassignments?.ignoredStudentIds || new Set()).values())
       ]);
       const beforeAssignedMap = resolvedSpecial?.beforeAssignedMap || new Map();
+      const hardIgnoredAssignedMap = hardIgnoredPreassignments?.assignedMap || new Map();
       const projectLoadAdjustments = new Map((data.projects || []).map((project) => [project.id, 0]));
       beforeAssignedMap.forEach((projectId) => {
         projectLoadAdjustments.set(projectId, (projectLoadAdjustments.get(projectId) || 0) + 1);
       });
-      (hardIgnoredPreassignments?.assignedMap || new Map()).forEach((projectId) => {
+      hardIgnoredAssignedMap.forEach((projectId) => {
         projectLoadAdjustments.set(projectId, (projectLoadAdjustments.get(projectId) || 0) + 1);
       });
 
@@ -3948,7 +3964,9 @@
           minFill: Math.max(0, Number(project.minFill || 0) - reserved)
         };
       });
-      const classSplitReservedCounts = buildReservedClassSplitCounts(data, beforeAssignedMap);
+      const allPreassignedMap = new Map(beforeAssignedMap);
+      hardIgnoredAssignedMap.forEach((projectId, studentId) => allPreassignedMap.set(studentId, projectId));
+      const classSplitReservedCounts = buildReservedClassSplitCounts(data, allPreassignedMap);
       const allowedStudentIds = new Set(students.map((student) => student.id));
       const choiceMap = new Map(students.map((student) => [student.id, new Set(data.choiceMap?.get(student.id) || [])]));
       const classMap = new Map([...(data.classMap || new Map()).entries()].filter(([studentId]) => allowedStudentIds.has(studentId)));
@@ -4190,12 +4208,13 @@
           <td><input data-project-id="${p.id}" data-field="capacity" type="number" min="0" step="1" value="${p.capacity}" /></td>
           <td><input data-project-id="${p.id}" data-field="minFill" type="number" min="0" step="1" value="${p.minFill}" /></td>
           <td><input data-project-id="${p.id}" data-field="exclusive" type="checkbox" ${p.exclusive ? 'checked' : ''} /></td>
+          <td><input data-project-id="${p.id}" data-field="noIgnored" type="checkbox" ${p.noIgnored ? 'checked' : ''} /></td>
         </tr>
       `).join('');
       els.projectConfigWrap.innerHTML = `
         <table>
           <thead>
-            <tr><th>#</th><th>Projekt</th><th>W�hler</th><th>Erlaubte Jahrg�nge</th><th>Kapazit�t</th><th>Mindestbelegung</th><th>Exklusiv</th></tr>
+            <tr><th>#</th><th>Projekt</th><th>W�hler</th><th>Erlaubte Jahrg�nge</th><th>Kapazit�t</th><th>Mindestbelegung</th><th>Exklusiv</th><th>Keine ignorierten</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -4206,7 +4225,7 @@
           const field = e.target.dataset.field;
           const project = state.data.projects.find(p => p.id === id);
           if (!project) return;
-          if (field === 'exclusive') project.exclusive = !!e.target.checked;
+          if (field === 'exclusive' || field === 'noIgnored') project[field] = !!e.target.checked;
           else project[field] = asInt(e.target.value, 0);
         });
       });
@@ -5061,6 +5080,9 @@
           const studentYear = data.yearMap?.get(student.id) || '';
           candidates = candidates.filter((projectId) => projectAllowsStudentYear(projectById.get(projectId), studentYear));
         }
+        if (isStudentWishIgnored(student.id, data)) {
+          candidates = candidates.filter((projectId) => projectAllowsIgnoredStudent(projectById.get(projectId)));
+        }
 
         if (!candidates.length) return;
         const edges = [];
@@ -5169,6 +5191,9 @@
             const studentYear = data.yearMap?.get(student.id) || '';
             projects = projects.filter((projectId) => projectAllowsStudentYear(projectById.get(projectId), studentYear));
           }
+          if (isStudentWishIgnored(student.id, data)) {
+            projects = projects.filter((projectId) => projectAllowsIgnoredStudent(projectById.get(projectId)));
+          }
           projects = applyRestrictions(student.id, [...new Set(projects)]);
           domain.set(student.id, projects);
         });
@@ -5230,8 +5255,16 @@
             if (!projectAllowsStudentYear(projectById.get(projectId), studentYear)) candidates.delete(projectId);
           });
         }
+        if (isStudentWishIgnored(student.id, data)) {
+          [...candidates].forEach((projectId) => {
+            if (!projectAllowsIgnoredStudent(projectById.get(projectId))) candidates.delete(projectId);
+          });
+        }
         if (!candidates.size && allProjectIds.length) {
-          const fallbackProject = allProjectIds.find((projectId) => !config.hard.allowedYears || projectAllowsStudentYear(projectById.get(projectId), data.yearMap?.get(student.id) || ''));
+          const fallbackProject = allProjectIds.find((projectId) => {
+            if (isStudentWishIgnored(student.id, data) && !projectAllowsIgnoredStudent(projectById.get(projectId))) return false;
+            return !config.hard.allowedYears || projectAllowsStudentYear(projectById.get(projectId), data.yearMap?.get(student.id) || '');
+          });
           if (fallbackProject) candidates.add(fallbackProject);
         }
         domain.set(student.id, applyRestrictions(student.id, [...candidates]));
@@ -8189,8 +8222,8 @@
 
     function projectConfigAoA() {
       if (!state.data) return [['Keine Daten geladen']];
-      const header = ['#', 'Projekt', 'Wähler', 'Erlaubte Jahrgänge', 'Kapazität', 'Mindestbelegung', 'Exklusiv'];
-      const rows = state.data.projects.map((p, idx) => [Number.isFinite(Number(p.number)) ? Number(p.number) : idx + 1, p.name, p.choosersCount, formatAllowedYears(p.allowedYears || []), Number(p.capacity || 0), Number(p.minFill || 0), p.exclusive ? 'ja' : 'nein']);
+      const header = ['#', 'Projekt', 'Wähler', 'Erlaubte Jahrgänge', 'Kapazität', 'Mindestbelegung', 'Exklusiv', 'Keine ignorierten'];
+      const rows = state.data.projects.map((p, idx) => [Number.isFinite(Number(p.number)) ? Number(p.number) : idx + 1, p.name, p.choosersCount, formatAllowedYears(p.allowedYears || []), Number(p.capacity || 0), Number(p.minFill || 0), p.exclusive ? 'ja' : 'nein', p.noIgnored ? 'ja' : 'nein']);
       return [header, ...rows];
     }
 
@@ -8208,13 +8241,13 @@
     }
 
     function projectResultsAoA() {
-      const header = ['#', 'Projekt', 'Erlaubte Jahrg�nge', 'Kapazit�t', 'Mindestbelegung', 'Exklusiv', 'Zugeordnet', 'Teilnehmer'];
+      const header = ['#', 'Projekt', 'Erlaubte Jahrg�nge', 'Kapazit�t', 'Mindestbelegung', 'Exklusiv', 'Keine ignorierten', 'Zugeordnet', 'Teilnehmer'];
       if (!state.data) return [header];
-      if (!state.solution?.assignments) return [header, ['', '', '', '', '', '', '', 'Noch kein Ergebnis vorhanden.']];
+      if (!state.solution?.assignments) return [header, ['', '', '', '', '', '', '', '', 'Noch kein Ergebnis vorhanden.']];
       const rows = sortProjectsByNumber(state.data.projects).map((project) => {
         const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
         const names = state.solution.assignments.byProject.get(project.id) || [];
-        return [Number.isFinite(Number(project.number)) ? Number(project.number) : idx + 1, project.name, formatAllowedYears(project.allowedYears || []), Number(project.capacity || 0), Number(project.minFill || 0), project.exclusive ? 'ja' : 'nein', names.length, names.join(', ')];
+        return [Number.isFinite(Number(project.number)) ? Number(project.number) : idx + 1, project.name, formatAllowedYears(project.allowedYears || []), Number(project.capacity || 0), Number(project.minFill || 0), project.exclusive ? 'ja' : 'nein', project.noIgnored ? 'ja' : 'nein', names.length, names.join(', ')];
       });
       return [header, ...rows];
     }
