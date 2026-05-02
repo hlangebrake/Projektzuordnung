@@ -1672,8 +1672,8 @@
                 <label for="stageSearchMode">Stufenmodus</label>
                 <select id="stageSearchMode">
                   <option value="fast">Schnell – spätere Stufen um aktuelle Lösung verengen</option>
-                  <option value="exact">Exakt – spätere Stufen ohne Zusatzvereinfachung</option>
-                  <option value="iterative" selected>Iterativ – adaptive Teilproblem-Suche</option>
+                  <option value="exact" selected>Exakt – spätere Stufen ohne Zusatzvereinfachung</option>
+                  <option value="iterative">Iterativ – adaptive Teilproblem-Suche</option>
                 </select>
               </div>
               <div id="iterativeIterationsWrap" style="display:none">
@@ -2529,6 +2529,60 @@
       return groups;
     }
 
+    function buildYearDiversityMixSpec(data) {
+      const byYear = new Map();
+      if (!data?.students?.length || !data?.projects?.length) return { byYear };
+      const eligibleProjects = (data.projects || []).filter((project) => !isProjectExclusive(project));
+      const studentsByYear = new Map();
+      (data.students || []).forEach((student) => {
+        const year = data.yearMap?.get(student.id) || '';
+        if (!year) return;
+        if (!studentsByYear.has(year)) studentsByYear.set(year, []);
+        studentsByYear.get(year).push(student.id);
+      });
+      studentsByYear.forEach((studentIds, year) => {
+        const candidateProjects = eligibleProjects.filter((project) => projectAllowsStudentYear(project, year) && Number(project.capacity || 0) > 0);
+        if (candidateProjects.length < 2) return;
+        const totalCapacity = candidateProjects.reduce((sum, project) => sum + Math.max(0, Number(project.capacity || 0)), 0);
+        if (totalCapacity <= 0) return;
+        const targetByProject = new Map(candidateProjects.map((project) => {
+          const capacity = Math.max(0, Number(project.capacity || 0));
+          const target = Math.max(1, Math.ceil((studentIds.length * capacity) / totalCapacity));
+          return [project.id, target];
+        }));
+        byYear.set(year, {
+          year,
+          studentIds: [...studentIds],
+          eligibleProjectIds: candidateProjects.map((project) => project.id),
+          totalStudents: studentIds.length,
+          totalCapacity,
+          targetByProject
+        });
+      });
+      return { byYear };
+    }
+
+    function getYearDiversityOverflowCount(projectId, yearValue, yearCount, spec) {
+      const target = spec?.byYear?.get(yearValue)?.targetByProject?.get(projectId);
+      if (!Number.isFinite(Number(target))) return 0;
+      return Math.max(0, Number(yearCount || 0) - Number(target || 0));
+    }
+
+    function buildReservedClassSplitCounts(data, beforeAssignedMap = new Map()) {
+      const counts = new Map();
+      if (!data || !(beforeAssignedMap instanceof Map) || !beforeAssignedMap.size) return counts;
+      beforeAssignedMap.forEach((projectId, studentId) => {
+        const className = data.classMap?.get(studentId) || '';
+        if (!className) return;
+        const yearValue = parseStudentYearNumber(data.yearMap?.get(studentId));
+        if (!isClassSplitRelevantYear(yearValue)) return;
+        if (!counts.has(projectId)) counts.set(projectId, new Map());
+        const projectCounts = counts.get(projectId);
+        projectCounts.set(className, (projectCounts.get(className) || 0) + 1);
+      });
+      return counts;
+    }
+
     function getClassTogetherMinimum(config) {
       return normalizeRuleMinValue('classTogether', config?.ruleParams?.classTogether?.min ?? config?.soft?.classTogether?.min ?? config?.hard?.classTogether?.min, RULE_LIBRARY.classTogether?.defaultMin ?? 1);
     }
@@ -2622,6 +2676,7 @@
         const years = buildStudentGroupMembers(ctx.data, 'yearMap');
         if (years.size < 2) return;
         const presence = addPresenceVarsForGroups(ctx, 'yearmix', years);
+        const mixSpec = ctx.data.yearDiversityMixSpec || buildYearDiversityMixSpec(ctx.data);
         const bigM = Math.max(2, ctx.data.students.length);
         ctx.data.projects.forEach((project) => {
           const yVars = [...(presence.get(project.id)?.values() || [])];
@@ -2638,6 +2693,19 @@
           const c3 = new Map([[multi, -2]]);
           yVars.forEach((v) => c3.set(v, (c3.get(v) || 0) + 1));
           ctx.builder.addConstraint(`yearmix_distinct__${project.id}`, c3, ctx.glpk.GLP_LO, 0, 0);
+        });
+        (mixSpec?.byYear || new Map()).forEach((entry, yearValue) => {
+          entry.eligibleProjectIds.forEach((projectId) => {
+            const target = entry.targetByProject.get(projectId);
+            if (!Number.isFinite(Number(target))) return;
+            const expr = new Map();
+            entry.studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, projectId);
+              if (x) expr.set(x, 1);
+            });
+            if (!expr.size) return;
+            ctx.builder.addConstraint(`yearmix_cap__${projectId}__${sanitizeToken(yearValue)}`, expr, ctx.glpk.GLP_UP, 0, Number(target));
+          });
         });
       }
     }
@@ -2666,16 +2734,20 @@
         const classes = buildClassSplitGroups(ctx.data);
         if (!classes.size) return;
         const limit = getClassSplitLimit(ctx.config);
+        const reservedCounts = ctx.data.classSplitReservedCounts || new Map();
         ctx.data.projects.forEach((project) => {
+          const reservedByClass = reservedCounts.get(project.id) || new Map();
           for (const [className, studentIds] of classes.entries()) {
             const expr = new Map();
             studentIds.forEach((studentId) => {
               const x = ctx.getX(studentId, project.id);
               if (x) expr.set(x, 1);
             });
-            if (expr.size) {
-              ctx.builder.addConstraint(`classsplit_limit__${project.id}__${sanitizeToken(className)}`, expr, ctx.glpk.GLP_UP, 0, limit);
-            }
+            const reserved = reservedByClass.get(className) || 0;
+            const effectiveLimit = limit - reserved;
+            if (!expr.size && reserved <= limit) continue;
+            if (!expr.size) continue;
+            ctx.builder.addConstraint(`classsplit_limit__${project.id}__${sanitizeToken(className)}`, expr, ctx.glpk.GLP_UP, 0, effectiveLimit);
           }
         });
       }
@@ -2719,11 +2791,28 @@
         const years = buildStudentGroupMembers(ctx.data, 'yearMap');
         if (!years.size) return new Map();
         const presence = addPresenceVarsForGroups(ctx, 'soft_yearmix', years);
+        const mixSpec = ctx.data.yearDiversityMixSpec || buildYearDiversityMixSpec(ctx.data);
         const expr = new Map();
         ctx.data.projects.forEach((project) => {
           for (const y of (presence.get(project.id)?.values() || [])) {
             expr.set(y, (expr.get(y) || 0) + 1);
           }
+        });
+        (mixSpec?.byYear || new Map()).forEach((entry, yearValue) => {
+          entry.eligibleProjectIds.forEach((projectId) => {
+            const target = entry.targetByProject.get(projectId);
+            if (!Number.isFinite(Number(target))) return;
+            const coeffs = new Map();
+            entry.studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, projectId);
+              if (x) coeffs.set(x, 1);
+            });
+            if (!coeffs.size) return;
+            const overflow = ctx.builder.addContinuous(`yearmix_over__${projectId}__${sanitizeToken(yearValue)}`, 0);
+            coeffs.set(overflow, -1);
+            ctx.builder.addConstraint(`yearmix_soft_cap__${projectId}__${sanitizeToken(yearValue)}`, coeffs, ctx.glpk.GLP_UP, 0, Number(target));
+            expr.set(overflow, (expr.get(overflow) || 0) - 1);
+          });
         });
         return expr;
       }
@@ -2749,18 +2838,21 @@
         const classes = buildClassSplitGroups(ctx.data);
         if (!classes.size) return new Map();
         const limit = getClassSplitLimit(ctx.config);
+        const reservedCounts = ctx.data.classSplitReservedCounts || new Map();
         const expr = new Map();
         ctx.data.projects.forEach((project) => {
+          const reservedByClass = reservedCounts.get(project.id) || new Map();
           for (const [className, studentIds] of classes.entries()) {
             const coeffs = new Map();
             studentIds.forEach((studentId) => {
               const x = ctx.getX(studentId, project.id);
               if (x) coeffs.set(x, 1);
             });
-            if (!coeffs.size) continue;
+            const reserved = reservedByClass.get(className) || 0;
+            if (!coeffs.size && reserved <= limit) continue;
             const overflow = ctx.builder.addContinuous(`classsplit_over__${project.id}__${sanitizeToken(className)}`, 0);
             coeffs.set(overflow, -1);
-            ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, limit);
+            ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, limit - reserved);
             expr.set(overflow, (expr.get(overflow) || 0) - 1);
           }
         });
@@ -3856,6 +3948,7 @@
           minFill: Math.max(0, Number(project.minFill || 0) - reserved)
         };
       });
+      const classSplitReservedCounts = buildReservedClassSplitCounts(data, beforeAssignedMap);
       const allowedStudentIds = new Set(students.map((student) => student.id));
       const choiceMap = new Map(students.map((student) => [student.id, new Set(data.choiceMap?.get(student.id) || [])]));
       const classMap = new Map([...(data.classMap || new Map()).entries()].filter(([studentId]) => allowedStudentIds.has(studentId)));
@@ -3867,6 +3960,15 @@
         choiceMap,
         classMap,
         yearMap,
+        classSplitReservedCounts,
+        yearDiversityMixSpec: buildYearDiversityMixSpec({
+          ...data,
+          students,
+          projects,
+          choiceMap,
+          classMap,
+          yearMap
+        }),
         classGroups: [...(data.classGroups || [])],
         yearGroups: [...(data.yearGroups || [])]
       };
@@ -4694,7 +4796,23 @@
         }
       }
 
-      const needsClassData = !!(config.hard.yearDiversity || config.hard.classSpread || config.hard.allowedYears || config.hard.wishFairness || config.soft.yearDiversity?.active || config.soft.classSpread?.active || config.soft.allowedYears?.active || config.soft.wishFairness?.active);
+      if (config.hard.classSplitLimit) {
+        const reservedCounts = data.classSplitReservedCounts || new Map();
+        const limit = getClassSplitLimit(config);
+        for (const project of (data.projects || [])) {
+          const byClass = reservedCounts.get(project.id) || new Map();
+          for (const [className, count] of byClass.entries()) {
+            if ((count || 0) > limit) {
+              return {
+                ok: false,
+                message: `Die Vorab-Zuordnung überschreitet für ${project.name} bereits das Klassenlimit der Klasse ${className}.`
+              };
+            }
+          }
+        }
+      }
+
+      const needsClassData = !!(config.hard.yearDiversity || config.hard.classSpread || config.hard.classSplitLimit || config.hard.classTogether || config.hard.allowedYears || config.hard.wishFairness || config.soft.yearDiversity?.active || config.soft.classSpread?.active || config.soft.classSplitLimit?.active || config.soft.classTogether?.active || config.soft.allowedYears?.active || config.soft.wishFairness?.active);
       if (needsClassData && !(data.classMap?.size)) {
         return {
           ok: false,
@@ -5417,16 +5535,26 @@
         }
       }
       if (compiled.config.hard.yearDiversity && (data.yearGroups?.length || 0) >= 2) {
+        const mixSpec = data.yearDiversityMixSpec || buildYearDiversityMixSpec(data);
         for (const project of data.projects) {
           const distinctYears = new Set();
+          const yearCounts = new Map();
           for (const student of data.students) {
             if (assignmentMap.get(student.id) !== project.id) continue;
             const year = data.yearMap?.get(student.id);
-            if (year) distinctYears.add(year);
+            if (year) {
+              distinctYears.add(year);
+              yearCounts.set(year, (yearCounts.get(year) || 0) + 1);
+            }
           }
           const load = loads.get(project.id) || 0;
           if (load >= 2 && distinctYears.size < 2) {
             return { ok: false, reason: `Jahrgangsmischung für ${project.name} verletzt.` };
+          }
+          for (const [yearValue, count] of yearCounts.entries()) {
+            if (getYearDiversityOverflowCount(project.id, yearValue, count, mixSpec) > 0) {
+              return { ok: false, reason: `Zu viele Schüler aus Jahrgang ${yearValue} in ${project.name}.` };
+            }
           }
         }
       }
@@ -5441,6 +5569,24 @@
               return { ok: false, reason: `Mehrfachbelegung einer Klasse in ${project.name}.` };
             }
             seenClasses.add(className);
+          }
+        }
+      }
+      if (compiled.config.hard.classSplitLimit && (data.classMap?.size || 0) > 0) {
+        const limit = getClassSplitLimit(compiled.config);
+        const reservedCounts = data.classSplitReservedCounts || new Map();
+        for (const project of data.projects) {
+          const classCounts = new Map(reservedCounts.get(project.id) || []);
+          for (const student of data.students) {
+            if (assignmentMap.get(student.id) !== project.id) continue;
+            const className = data.classMap?.get(student.id) || '';
+            if (!className) continue;
+            const yearValue = parseStudentYearNumber(data.yearMap?.get(student.id));
+            if (!isClassSplitRelevantYear(yearValue)) continue;
+            classCounts.set(className, (classCounts.get(className) || 0) + 1);
+            if ((classCounts.get(className) || 0) > limit) {
+              return { ok: false, reason: `Klassenlimit für ${className} in ${project.name} überschritten.` };
+            }
           }
         }
       }
@@ -5527,6 +5673,7 @@
         friendMateMap: buildFriendMateMap(config?.pairs?.friends || []),
         conflictMateMap: buildConflictMateMap(config?.pairs?.conflicts || []),
         wishFairnessEntries: buildWishFairnessClassEntries(data),
+        yearDiversityMixSpec: data?.yearDiversityMixSpec || buildYearDiversityMixSpec(data),
         ignoredWishStudentIds,
         ignoredWishStudentSet: new Set(ignoredWishStudentIds),
         ignoredWishBalanceProjectIds,
@@ -5625,7 +5772,15 @@
           }, 0);
         }
         case 'yearDiversity': {
-          return (data?.projects || []).reduce((sum, project) => sum + (metrics.projectYears.get(project.id)?.size || 0), 0);
+          const mixSpec = evalCache?.yearDiversityMixSpec || null;
+          const distinctScore = (data?.projects || []).reduce((sum, project) => sum + (metrics.projectYears.get(project.id)?.size || 0), 0);
+          const overflowPenalty = [...(mixSpec?.byYear || new Map()).entries()].reduce((sum, [yearValue, entry]) => {
+            return sum + entry.eligibleProjectIds.reduce((inner, projectId) => {
+              const yearCount = metrics.projectYearCounts.get(projectId)?.get(yearValue) || 0;
+              return inner + getYearDiversityOverflowCount(projectId, yearValue, yearCount, mixSpec);
+            }, 0);
+          }, 0);
+          return distinctScore - overflowPenalty;
         }
         case 'classSpread': {
           return (data?.projects || []).reduce((sum, project) => sum + (metrics.projectClasses.get(project.id)?.size || 0), 0);
@@ -5789,13 +5944,18 @@
             });
           });
         } else if (rule.key === 'yearDiversity') {
+          const mixSpec = evalCache?.yearDiversityMixSpec || null;
           (data?.projects || []).forEach((project) => {
             const load = metrics.loads.get(project.id) || 0;
             if (load < 2) return;
             const distinct = metrics.projectYears.get(project.id)?.size || 0;
-            if (distinct >= 2) return;
+            const yearCounts = metrics.projectYearCounts.get(project.id) || new Map();
             (metrics.projectMembers.get(project.id) || []).forEach((studentId) => {
-              priorities.set(studentId, (priorities.get(studentId) || 0) + weight * 1.5);
+              const yearValue = data?.yearMap?.get(studentId) || '';
+              const overflow = getYearDiversityOverflowCount(project.id, yearValue, yearCounts.get(yearValue) || 0, mixSpec);
+              const bonus = distinct < 2 ? 1.5 : 0;
+              if (bonus <= 0 && overflow <= 0) return;
+              priorities.set(studentId, (priorities.get(studentId) || 0) + weight * (bonus + overflow * 2));
             });
           });
         } else if (rule.key === 'wishFairness') {
@@ -5853,7 +6013,12 @@
           }
           if (rule.key === 'yearDiversity') {
             const yearSet = metrics.projectYears.get(projectId) || new Set();
+            const mixSpec = evalCache?.yearDiversityMixSpec || null;
+            const currentYearCount = metrics.projectYearCounts.get(projectId)?.get(studentYear) || 0;
+            const currentOverflow = getYearDiversityOverflowCount(projectId, studentYear, currentYearCount, mixSpec);
+            const nextOverflow = getYearDiversityOverflowCount(projectId, studentYear, currentYearCount + 1, mixSpec);
             score += weight * (studentYear && !yearSet.has(studentYear) ? 2 : 0.5);
+            score += weight * ((currentOverflow - nextOverflow) * 3);
           }
           if (rule.key === 'wishFairness') {
             const className = data?.classMap?.get(studentId) || '';
@@ -6169,10 +6334,13 @@
       }
 
       if (stageHasSoftRule(stage, 'yearDiversity')) {
+        const mixSpec = evalCache?.yearDiversityMixSpec || null;
         (data?.projects || []).forEach((project) => {
           const load = metrics.loads.get(project.id) || 0;
           const distinctYears = metrics.projectYears.get(project.id)?.size || 0;
-          if (load >= 2 && distinctYears <= 1) {
+          const yearCounts = metrics.projectYearCounts.get(project.id) || new Map();
+          const hasOverflow = [...yearCounts.entries()].some(([yearValue, count]) => getYearDiversityOverflowCount(project.id, yearValue, count, mixSpec) > 0);
+          if ((load >= 2 && distinctYears <= 1) || hasOverflow) {
             seedProjects.add(project.id);
             addStudentIdsLimited(selected, metrics.projectMembers.get(project.id) || [], desiredSize * 3);
           }
@@ -8400,6 +8568,32 @@
         .slice(0, 80) || 'export';
     }
 
+    function normalizePdfText(value) {
+      const fallbackMap = {
+        'ß': 'ss',
+        'ẞ': 'SS',
+        'æ': 'ae',
+        'Æ': 'AE',
+        'œ': 'oe',
+        'Œ': 'OE',
+        'ø': 'o',
+        'Ø': 'O',
+        'ł': 'l',
+        'Ł': 'L',
+        'đ': 'd',
+        'Đ': 'D',
+        'ð': 'd',
+        'Ð': 'D',
+        'þ': 'th',
+        'Þ': 'Th'
+      };
+      return String(value == null ? '' : value)
+        .replace(/[ßẞæÆœŒøØłŁđĐðÐþÞ]/g, (char) => fallbackMap[char] || char)
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\x20-\x7E]/g, '?');
+    }
+
     function triggerBlobDownload(blob, filename) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -8416,7 +8610,7 @@
     }
 
     function fitTextToWidth(font, text, fontSize, maxWidth) {
-      const raw = String(text == null ? '' : text);
+      const raw = normalizePdfText(text);
       if (!raw) return '';
       if (font.widthOfTextAtSize(raw, fontSize) <= maxWidth) return raw;
       let value = raw;
@@ -8460,7 +8654,7 @@
       const addPage = () => {
         page = pdfDoc.addPage([pageWidth, pageHeight]);
         y = pageHeight - margin;
-        page.drawText(String(section?.title || 'Export'), {
+        page.drawText(normalizePdfText(section?.title || 'Export'), {
           x: margin,
           y,
           size: titleSize,
