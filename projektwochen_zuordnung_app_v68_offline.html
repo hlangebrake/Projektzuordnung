@@ -2030,7 +2030,7 @@
         defaultPlacement: 'hard',
         defaultLevel: 3,
         defaultWeight: 10,
-        defaultMode: 'absolute'
+        defaultMode: 'relative'
       },
       allowedYears: {
         key: 'allowedYears',
@@ -8614,10 +8614,10 @@
       if (!raw) return '';
       if (font.widthOfTextAtSize(raw, fontSize) <= maxWidth) return raw;
       let value = raw;
-      while (value.length > 1 && font.widthOfTextAtSize(`${value}…`, fontSize) > maxWidth) {
+      while (value.length > 1 && font.widthOfTextAtSize(`${value}...`, fontSize) > maxWidth) {
         value = value.slice(0, -1);
       }
-      return `${value}…`;
+      return `${value}...`;
     }
 
     async function buildSectionPdfBytes(section) {
