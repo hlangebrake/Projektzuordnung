@@ -529,6 +529,26 @@
       border-radius: 10px;
       padding: 6px 4px;
     }
+    .rule-param-wrap {
+      min-width: 72px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .rule-param-label {
+      display: block;
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .rule-param-input {
+      width: 72px;
+      min-width: 72px;
+      padding: 8px 10px;
+      font-size: 12px;
+      border-radius: 10px;
+    }
     .rule-drop-help {
       color: var(--muted);
       font-size: 12px;
@@ -1876,6 +1896,7 @@
       minFill: { key: 'minFill', label: 'Mindestbelegung erzwingen' },
       yearDiversity: { key: 'yearDiversity', label: 'Jahrgänge hart mischen' },
       classSpread: { key: 'classSpread', label: 'Klassen hart mischen' },
+      classSplitLimit: { key: 'classSplitLimit', label: 'Klassen teilen hart beachten' },
       allowedYears: { key: 'allowedYears', label: 'Erlaubte Jahrgänge hart beachten' },
       togetherPairs: { key: 'togetherPairs', label: 'Freundespaare hart zusammen' },
       separatePairs: { key: 'separatePairs', label: 'Konfliktpaare hart trennen' },
@@ -1891,6 +1912,7 @@
       classSpread: { key: 'classSpread', label: 'Klassen mischen' },
       allowedYears: { key: 'allowedYears', label: 'Erlaubte Jahrgänge bevorzugen' },
       togetherPairs: { key: 'togetherPairs', label: 'Freundespaare zusammenhalten' },
+      classSplitLimit: { key: 'classSplitLimit', label: 'Klassen teilen' },
       separatePairs: { key: 'separatePairs', label: 'Konfliktpaare trennen' },
       balanceLoad: { key: 'balanceLoad', label: 'Belegung balancieren' },
       wishFairness: { key: 'wishFairness', label: 'Faire Wunscherfüllung zwischen Klassen' }
@@ -1956,6 +1978,19 @@
         defaultPlacement: 'soft',
         defaultLevel: 2,
         defaultWeight: 10
+      },
+      classSplitLimit: {
+        key: 'classSplitLimit',
+        label: 'Klassen teilen',
+        hardDescription: 'In Projekten dürfen für Jahrgang 5 bis 11 höchstens so viele Schüler derselben Klasse sein wie im Feld „Maximal“ eingestellt.',
+        softDescription: 'Überschreitungen des Klassenlimits innerhalb eines Projekts für Jahrgang 5 bis 11 bestrafen.',
+        hardKey: 'classSplitLimit',
+        softKey: 'classSplitLimit',
+        capabilities: ['hard', 'soft'],
+        defaultPlacement: 'inactive',
+        defaultLevel: 2,
+        defaultWeight: 20,
+        defaultMax: 2
       },
       allowedYears: {
         key: 'allowedYears',
@@ -2428,6 +2463,32 @@
       return groups;
     }
 
+    function parseStudentYearNumber(value) {
+      const match = String(value || "").match(/(\d{1,2})/);
+      return match ? Number(match[1]) : Number.NaN;
+    }
+
+    function isClassSplitRelevantYear(value) {
+      return Number.isFinite(value) && value >= 5 && value <= 11;
+    }
+
+    function getClassSplitLimit(config) {
+      return normalizeRuleMaxValue('classSplitLimit', config?.ruleParams?.classSplitLimit?.max ?? config?.soft?.classSplitLimit?.max ?? config?.hard?.classSplitLimit?.max, RULE_LIBRARY.classSplitLimit?.defaultMax ?? 1);
+    }
+
+    function buildClassSplitGroups(data) {
+      const groups = new Map();
+      (data.students || []).forEach((student) => {
+        const className = data.classMap?.get(student.id) || '';
+        if (!className) return;
+        const yearValue = parseStudentYearNumber(data.yearMap?.get(student.id));
+        if (!isClassSplitRelevantYear(yearValue)) return;
+        if (!groups.has(className)) groups.set(className, []);
+        groups.get(className).push(student.id);
+      });
+      return groups;
+    }
+
     function addPresenceVarsForGroups(ctx, prefix, groups) {
       const presenceByProject = new Map();
       ctx.data.projects.forEach((project) => {
@@ -2495,6 +2556,26 @@
       }
     }
 
+    class HardRuleClassSplitLimit {
+      apply(ctx) {
+        const classes = buildClassSplitGroups(ctx.data);
+        if (!classes.size) return;
+        const limit = getClassSplitLimit(ctx.config);
+        ctx.data.projects.forEach((project) => {
+          for (const [className, studentIds] of classes.entries()) {
+            const expr = new Map();
+            studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, project.id);
+              if (x) expr.set(x, 1);
+            });
+            if (expr.size) {
+              ctx.builder.addConstraint(`classsplit_limit__${project.id}__${sanitizeToken(className)}`, expr, ctx.glpk.GLP_UP, 0, limit);
+            }
+          }
+        });
+      }
+    }
+
     class SoftRuleYearDiversity {
       apply(ctx) {
         const years = buildStudentGroupMembers(ctx.data, 'yearMap');
@@ -2519,6 +2600,30 @@
         ctx.data.projects.forEach((project) => {
           for (const y of (presence.get(project.id)?.values() || [])) {
             expr.set(y, (expr.get(y) || 0) + 1);
+          }
+        });
+        return expr;
+      }
+    }
+
+    class SoftRuleClassSplitLimit {
+      apply(ctx) {
+        const classes = buildClassSplitGroups(ctx.data);
+        if (!classes.size) return new Map();
+        const limit = getClassSplitLimit(ctx.config);
+        const expr = new Map();
+        ctx.data.projects.forEach((project) => {
+          for (const [className, studentIds] of classes.entries()) {
+            const coeffs = new Map();
+            studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, project.id);
+              if (x) coeffs.set(x, 1);
+            });
+            if (!coeffs.size) continue;
+            const overflow = ctx.builder.addContinuous(`classsplit_over__${project.id}__${sanitizeToken(className)}`, 0);
+            coeffs.set(overflow, -1);
+            ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, limit);
+            expr.set(overflow, (expr.get(overflow) || 0) - 1);
           }
         });
         return expr;
@@ -2655,6 +2760,7 @@
       minFill: new HardRuleMinFill(),
       yearDiversity: new HardRuleYearDiversity(),
       classSpread: new HardRuleClassSpread(),
+      classSplitLimit: new HardRuleClassSplitLimit(),
       allowedYears: new HardRuleAllowedYears(),
       togetherPairs: new HardRuleTogetherPairs(),
       separatePairs: new HardRuleSeparatePairs(),
@@ -2667,6 +2773,7 @@
       preferChosen: new SoftRulePreferChosen(),
       yearDiversity: new SoftRuleYearDiversity(),
       classSpread: new SoftRuleClassSpread(),
+      classSplitLimit: new SoftRuleClassSplitLimit(),
       allowedYears: new SoftRuleAllowedYears(),
       togetherPairs: new SoftRuleTogetherPairs(),
       separatePairs: new SoftRuleSeparatePairs(),
@@ -3719,6 +3826,32 @@
       });
     }
 
+    function normalizeRuleMaxValue(ruleKey, value, fallback = null) {
+      const rule = RULE_LIBRARY[ruleKey] || {};
+      const base = Number.isFinite(Number(rule.defaultMax)) ? Number(rule.defaultMax) : 1;
+      const raw = Number.isFinite(Number(value)) ? Number(value) : Number(fallback != null ? fallback : base);
+      return Math.max(1, Math.round(raw));
+    }
+
+    function normalizeRuleUiState(ruleUi = null) {
+      const defaults = createDefaultRuleUiState();
+      const normalized = {
+        levels: Math.max(1, Number(ruleUi?.levels || defaults.levels || 1)),
+        rules: {}
+      };
+      Object.values(RULE_LIBRARY).forEach((rule) => {
+        const raw = ruleUi?.rules?.[rule.key] || defaults.rules[rule.key] || {};
+        normalized.rules[rule.key] = {
+          active: !!raw.active,
+          placement: ['inactive', 'hard', 'soft'].includes(raw.placement) ? raw.placement : (defaults.rules[rule.key]?.placement || 'inactive'),
+          level: Math.max(1, Number(raw.level || defaults.rules[rule.key]?.level || rule.defaultLevel || 1)),
+          weight: normalizeSoftSliderWeight(raw.weight ?? defaults.rules[rule.key]?.weight ?? rule.defaultWeight ?? 1),
+          max: normalizeRuleMaxValue(rule.key, raw.max, defaults.rules[rule.key]?.max ?? rule.defaultMax ?? 1)
+        };
+      });
+      return normalized;
+    }
+
     function createDefaultRuleUiState() {
       const rules = {};
       Object.values(RULE_LIBRARY).forEach((rule) => {
@@ -3726,7 +3859,8 @@
           active: rule.defaultPlacement !== 'inactive',
           placement: rule.defaultPlacement,
           level: rule.defaultLevel || 1,
-          weight: normalizeSoftSliderWeight(rule.defaultWeight ?? 1)
+          weight: normalizeSoftSliderWeight(rule.defaultWeight ?? 1),
+          max: normalizeRuleMaxValue(rule.key, rule.defaultMax ?? 1)
         };
       });
       const maxDefaultLevel = Math.max(3, ...Object.values(rules).map((rule) => rule.level || 1));
@@ -3734,9 +3868,7 @@
     }
 
     function ensureRuleUiState() {
-      if (!state.ruleUi) {
-        state.ruleUi = createDefaultRuleUiState();
-      }
+      state.ruleUi = normalizeRuleUiState(state.ruleUi);
       return state.ruleUi;
     }
 
@@ -3761,7 +3893,8 @@
         active: false,
         placement: 'inactive',
         level: base.defaultLevel || 1,
-        weight: base.defaultWeight ?? 1
+        weight: base.defaultWeight ?? 1,
+        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1)
       };
       renderRuleWorkbench();
     }
@@ -3774,7 +3907,8 @@
         active: false,
         placement: 'inactive',
         level: base.defaultLevel || 1,
-        weight: base.defaultWeight ?? 1
+        weight: base.defaultWeight ?? 1,
+        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1)
       };
       renderRuleWorkbench();
     }
@@ -3824,7 +3958,16 @@
       if (!settings.active) return '';
       const isSoft = settings.placement === 'soft';
       const weight = normalizeSoftSliderWeight(settings.weight ?? rule.defaultWeight ?? 1);
+      const maxValue = normalizeRuleMaxValue(ruleKey, settings.max, rule.defaultMax ?? 1);
       const description = getRuleDescription(rule, settings);
+      const maxField = rule.key === 'classSplitLimit'
+        ? `
+          <div class="rule-param-wrap">
+            <label class="rule-param-label" for="rule-max-${escapeHtml(ruleKey)}">Maximal</label>
+            <input id="rule-max-${escapeHtml(ruleKey)}" class="rule-param-input" data-rule-max="${ruleKey}" type="number" min="1" step="1" value="${maxValue}" />
+          </div>
+        `
+        : '';
       return `
         <article class="rule-card" draggable="true" data-rule-key="${ruleKey}">
           <div class="rule-card-header">
@@ -3841,6 +3984,7 @@
                 <div class="rule-weight-value">${weight}</div>
               </div>
             ` : ''}
+            ${maxField}
           </div>
         </article>
       `;
@@ -3987,6 +4131,17 @@
           if (valueBox) valueBox.textContent = String(normalizeSoftSliderWeight(ui.rules[ruleKey].weight));
         });
       });
+      document.querySelectorAll('[data-rule-max]').forEach((input) => {
+        const sync = (e) => {
+          const ruleKey = e.currentTarget.dataset.ruleMax;
+          const ui = ensureRuleUiState();
+          const normalized = normalizeRuleMaxValue(ruleKey, e.currentTarget.value, RULE_LIBRARY[ruleKey]?.defaultMax ?? 1);
+          ui.rules[ruleKey].max = normalized;
+          e.currentTarget.value = String(normalized);
+        };
+        input.addEventListener('input', sync);
+        input.addEventListener('change', sync);
+      });
       bindRuleWorkbenchDragDrop();
     }
 
@@ -4003,7 +4158,8 @@
           active: false,
           placement: 'inactive',
           level: Number(prev.level || rule.defaultLevel || 1),
-          weight: normalizeSoftSliderWeight(prev.weight ?? rule.defaultWeight ?? 1)
+          weight: normalizeSoftSliderWeight(prev.weight ?? rule.defaultWeight ?? 1),
+          max: normalizeRuleMaxValue(rule.key, prev.max, rule.defaultMax ?? 1)
         };
       });
 
@@ -4023,12 +4179,15 @@
           if (!cloned.rules[ruleKey]) return;
           const slider = card.querySelector('[data-rule-weight]');
           const weight = slider ? Number(slider.value || cloned.rules[ruleKey].weight || 0) : cloned.rules[ruleKey].weight;
+          const maxInput = card.querySelector('[data-rule-max]');
+          const maxValue = maxInput ? Number(maxInput.value || cloned.rules[ruleKey].max || RULE_LIBRARY[ruleKey].defaultMax || 1) : cloned.rules[ruleKey].max;
           const isInactive = placement === 'inactive';
           cloned.rules[ruleKey] = {
             active: !isInactive,
             placement,
             level: placement === 'soft' ? (level || cloned.rules[ruleKey].level || 1) : Number(cloned.rules[ruleKey].level || 1),
-            weight: Number.isFinite(weight) ? normalizeSoftSliderWeight(weight) : normalizeSoftSliderWeight(RULE_LIBRARY[ruleKey].defaultWeight ?? 1)
+            weight: Number.isFinite(weight) ? normalizeSoftSliderWeight(weight) : normalizeSoftSliderWeight(RULE_LIBRARY[ruleKey].defaultWeight ?? 1),
+            max: normalizeRuleMaxValue(ruleKey, maxValue, RULE_LIBRARY[ruleKey].defaultMax ?? 1)
           };
         });
       });
@@ -4041,6 +4200,11 @@
       state.ruleUi = ui;
       const hard = Object.fromEntries(Object.keys(HARD_RULES).map((key) => [key, false]));
       const soft = Object.fromEntries(Object.keys(SOFT_RULE_DEFS).map((key) => [key, { active: false, level: 1, weight: 0 }]));
+      const ruleParams = {
+        classSplitLimit: {
+          max: normalizeRuleMaxValue('classSplitLimit', ui.rules.classSplitLimit?.max, RULE_LIBRARY.classSplitLimit?.defaultMax ?? 1)
+        }
+      };
 
       Object.entries(RULE_LIBRARY).forEach(([ruleKey, rule]) => {
         const settings = ui.rules[ruleKey];
@@ -4052,7 +4216,8 @@
           soft[rule.softKey] = {
             active: true,
             level: Math.max(1, Number(settings.level || rule.defaultLevel || 1)),
-            weight: normalizeSoftSliderWeight(settings.weight ?? rule.defaultWeight ?? 1)
+            weight: normalizeSoftSliderWeight(settings.weight ?? rule.defaultWeight ?? 1),
+            max: normalizeRuleMaxValue(rule.key, settings.max, rule.defaultMax ?? 1)
           };
         }
       });
@@ -4060,6 +4225,7 @@
       return {
         hard,
         soft,
+        ruleParams,
         pairs: {
           friends: [...state.pairs.friends],
           conflicts: [...state.pairs.conflicts]
@@ -8159,12 +8325,12 @@
           preparePrintReport();
           manageExportButtons();
           setActiveTab('tabResult');
-          setStatus(els.solveStatus, 'ok', `Alle Solver-relevanten Sch�ler wurden �ber Besonderheiten ausgenommen. Zugeordnet: <strong>${directAssignedCount}</strong> von <strong>${state.data.students.length}</strong> Sch�lern.`);
+          setStatus(els.solveStatus, 'ok', `Alle Solver-relevanten Sch�ler wurden �ber Besonderheiten ausgenommen. Zugeordnet: <strong>${directAssignedCount}</strong> von <strong>${state.data.students.length}</strong> Sch�lern.`);
           await updateLiveStatus({
             phase: 'Abgeschlossen',
             stageText: '0 Prioritätsstufen',
             rulesText: 'Nur Besonderheiten aktiv',
-            detail: `${directAssignedCount} von ${state.data.students.length} Sch�lern wurden direkt aus den Besonderheiten �bernommen.`,
+            detail: `${directAssignedCount} von ${state.data.students.length} Sch�lern wurden direkt aus den Besonderheiten �bernommen.`,
             progress: 100,
             logMessage: 'Keine Solver-Schüler übrig; Ergebnis direkt aus Besonderheiten erzeugt.'
           });
