@@ -3254,18 +3254,35 @@
 
     function attachClassImportToData() {
       if (!state.data) return;
+      const importMap = state.classImport?.byName || new Map();
+      const mergedStudents = [...(state.data.students || [])];
+      const studentByName = new Map(mergedStudents.map((student) => [student.name, student]));
+      const mergedChoiceMap = new Map(state.data.choiceMap || []);
+      let nextStudentIndex = mergedStudents.length;
+
+      for (const [studentName] of importMap.entries()) {
+        if (studentByName.has(studentName)) continue;
+        const student = { id: `S${nextStudentIndex++}`, name: studentName };
+        mergedStudents.push(student);
+        studentByName.set(studentName, student);
+        mergedChoiceMap.set(student.id, new Set());
+      }
+
+      mergedStudents.sort((a, b) => a.name.localeCompare(b.name, 'de'));
       const classMap = new Map();
       const yearMap = new Map();
-      const importMap = state.classImport?.byName || new Map();
       let matchedCount = 0;
-      state.data.students.forEach((student) => {
+      mergedStudents.forEach((student) => {
+        if (!mergedChoiceMap.has(student.id)) mergedChoiceMap.set(student.id, new Set());
         const record = importMap.get(student.name);
         if (!record) return;
         matchedCount += 1;
         classMap.set(student.id, record.className);
         if (record.yearGroup) yearMap.set(student.id, record.yearGroup);
       });
-      const importedOnlyCount = [...importMap.keys()].filter((name) => !state.data.students.some((student) => student.name === name)).length;
+
+      state.data.students = mergedStudents;
+      state.data.choiceMap = mergedChoiceMap;
       state.data.classMap = classMap;
       state.data.yearMap = yearMap;
       state.data.classGroups = [...new Set(classMap.values())].sort((a, b) => String(a).localeCompare(String(b), 'de'));
@@ -3273,7 +3290,7 @@
       state.data.classCoverage = {
         matchedCount,
         unmatchedCount: Math.max(0, state.data.students.length - matchedCount),
-        importedOnlyCount
+        importedOnlyCount: 0
       };
     }
 
@@ -8371,6 +8388,8 @@
       state.resultPointerDownWasSelected = false;
       state.resultSuppressChipClick = false;
       stopResultDragAutoScroll();
+      if (state.data && state.classImport) attachClassImportToData();
+      if (state.data && state.projectInfoImport) applyProjectInfoToData();
 
       if (els.defaultCapacity && ui.defaultCapacity != null) els.defaultCapacity.value = ui.defaultCapacity;
       if (els.defaultMinFill && ui.defaultMinFill != null) els.defaultMinFill.value = ui.defaultMinFill;
