@@ -958,6 +958,16 @@
     .project-capacity-fill.ignored-wish {
       background: linear-gradient(90deg, #fdba74 0%, #f97316 100%);
     }
+    .project-capacity-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      margin-left: -1px;
+      background: rgba(15, 23, 42, 0.45);
+      pointer-events: none;
+      z-index: 1;
+    }
     .project-capacity-label {
       display: flex;
       justify-content: space-between;
@@ -1564,7 +1574,7 @@
             </div>
             <div style="margin-top:12px">
               <label for="wishThreshold">Mindestanzahl Wünsche für Berücksichtigung im Solver</label>
-              <input id="wishThreshold" type="number" min="0" step="1" value="5" />
+              <input id="wishThreshold" type="number" min="0" step="1" value="3" />
               <p class="muted small">Schüler mit weniger Wünschen als dieser Wert werden vom Regelobjekt <span class="mono">Projektwünsche</span> im Solver nicht berücksichtigt.</p>
             </div>
             <div id="multiLoadStatus" class="status warn">Noch keine Dateien geladen.</div>
@@ -1979,7 +1989,7 @@
         hardKey: 'classSpread',
         softKey: 'classSpread',
         capabilities: ['hard', 'soft'],
-        defaultPlacement: 'soft',
+        defaultPlacement: 'inactive',
         defaultLevel: 2,
         defaultWeight: 10
       },
@@ -1991,10 +2001,10 @@
         hardKey: 'classSplitLimit',
         softKey: 'classSplitLimit',
         capabilities: ['hard', 'soft'],
-        defaultPlacement: 'inactive',
-        defaultLevel: 2,
+        defaultPlacement: 'soft',
+        defaultLevel: 1,
         defaultWeight: 20,
-        defaultMax: 2
+        defaultMax: 3
       },
       classTogether: {
         key: 'classTogether',
@@ -2017,7 +2027,7 @@
         hardKey: 'hardIgnoredWishBalance',
         softKey: 'ignoredWishBalance',
         capabilities: ['hard', 'soft'],
-        defaultPlacement: 'inactive',
+        defaultPlacement: 'hard',
         defaultLevel: 3,
         defaultWeight: 10
       },
@@ -3699,8 +3709,11 @@
       }
 
       const preassignedLoads = new Map(candidateProjects.map((project) => [project.id, 0]));
+      const remainingCapacity = new Map(candidateProjects.map((project) => [project.id, Math.max(0, Number(project.capacity || 0))]));
       (resolvedSpecial?.beforeAssignedMap || new Map()).forEach((projectId) => {
-        if (preassignedLoads.has(projectId)) preassignedLoads.set(projectId, (preassignedLoads.get(projectId) || 0) + 1);
+        if (!preassignedLoads.has(projectId)) return;
+        preassignedLoads.set(projectId, (preassignedLoads.get(projectId) || 0) + 1);
+        remainingCapacity.set(projectId, Math.max(0, (remainingCapacity.get(projectId) || 0) - 1));
       });
 
       const projectOrderMeta = new Map(candidateProjects.map((project, index) => [project.id, {
@@ -3710,9 +3723,19 @@
 
       const assignedMap = new Map();
       const unassignedStudentIds = new Set();
-      sourceStudentIds.forEach((studentId) => {
+      const orderedStudentIds = [...sourceStudentIds].sort((leftId, rightId) => {
+        const leftYear = data.yearMap?.get(leftId) || '';
+        const rightYear = data.yearMap?.get(rightId) || '';
+        const leftEligible = candidateProjects.filter((project) => projectAllowsStudentYear(project, leftYear) && (remainingCapacity.get(project.id) || 0) > 0).length;
+        const rightEligible = candidateProjects.filter((project) => projectAllowsStudentYear(project, rightYear) && (remainingCapacity.get(project.id) || 0) > 0).length;
+        if (leftEligible !== rightEligible) return leftEligible - rightEligible;
+        const leftName = (data.students || []).find((student) => student.id === leftId)?.name || leftId;
+        const rightName = (data.students || []).find((student) => student.id === rightId)?.name || rightId;
+        return leftName.localeCompare(rightName, 'de');
+      });
+      orderedStudentIds.forEach((studentId) => {
         const studentYear = data.yearMap?.get(studentId) || '';
-        const eligibleProjects = candidateProjects.filter((project) => projectAllowsStudentYear(project, studentYear));
+        const eligibleProjects = candidateProjects.filter((project) => projectAllowsStudentYear(project, studentYear) && (remainingCapacity.get(project.id) || 0) > 0);
         if (!eligibleProjects.length) {
           unassignedStudentIds.add(studentId);
           return;
@@ -3732,6 +3755,7 @@
         }
         assignedMap.set(studentId, projectId);
         preassignedLoads.set(projectId, (preassignedLoads.get(projectId) || 0) + 1);
+        remainingCapacity.set(projectId, Math.max(0, (remainingCapacity.get(projectId) || 0) - 1));
       });
 
       return {
@@ -3792,6 +3816,18 @@
       return merged;
     }
 
+    function buildEffectiveSolverConfig(config, resolvedSpecial, hardIgnoredPreassignments) {
+      const reservedSeats = (resolvedSpecial?.beforeAssignedMap?.size || 0) + (hardIgnoredPreassignments?.assignedMap?.size || 0);
+      if (!reservedSeats) return config;
+      return {
+        ...config,
+        hard: {
+          ...(config?.hard || {}),
+          capacity: true
+        }
+      };
+    }
+
     function attachClassImportToData() {
       if (!state.data) return;
       const importMap = state.classImport?.byName || new Map();
@@ -3835,8 +3871,8 @@
     }
 
     function getWishConsiderationThreshold() {
-      const raw = els.wishThreshold ? Number(els.wishThreshold.value) : Number(state.wishConsiderationThreshold || 5);
-      if (!Number.isFinite(raw)) return Math.max(0, Number(state.wishConsiderationThreshold || 5));
+      const raw = els.wishThreshold ? Number(els.wishThreshold.value) : Number(state.wishConsiderationThreshold || 3);
+      if (!Number.isFinite(raw)) return Math.max(0, Number(state.wishConsiderationThreshold || 3));
       return Math.max(0, Math.round(raw));
     }
 
@@ -6070,7 +6106,7 @@
     }
 
     async function solveAdaptiveNeighborhoodSubproblem({ currentMap, compiledStage, stage, fixes, timeLimit, freeStudentIds, neighborhoodProjectMap }) {
-      const data = state.data;
+      const data = compiledStage?.data || state.data;
       const config = compiledStage?.config || {};
       const subCompiled = compileModel(data, config, state.glpk, 'full', true, currentMap, {
         maxSoftLevel: stage.level,
@@ -6095,7 +6131,7 @@
     }
 
     async function solveStageIteratively({ compiledStage, stage, allStages, stageIndex, stageNo, stageCount, timeLimit, progressCb, currentAssignmentMap, fixes, iterationBudget }) {
-      const data = state.data;
+      const data = compiledStage?.data || state.data;
       const config = compiledStage?.config || {};
       const evalCache = buildIterativeEvalCache(data, config);
       const configuredIterations = Math.max(1, Math.min(3000, asInt(iterationBudget, getIterativeIterationBudget(compiledStage?.config))));
@@ -6259,7 +6295,7 @@
         startObjective,
         objective: bestObjective,
         assignmentMap: bestMap,
-        assignments: assignmentMapToStructured(state.data, bestMap),
+        assignments: assignmentMapToStructured(data, bestMap),
         objectives: bestObjectives,
         metrics: bestMetrics
       };
@@ -6844,6 +6880,8 @@
       const freePlaces = Math.max(0, capacity - studentCount);
       const overCapacity = capacity > 0 && studentCount > capacity;
       const underMinFill = minFill > 0 && studentCount < minFill;
+      const displayCapacityBase = Math.max(capacity, studentCount, 1);
+      const capacityMarkerPercent = capacity > 0 ? Math.min(100, Math.max(0, (capacity / displayCapacityBase) * 100)) : 0;
       return {
         number: Number.isFinite(Number(project?.number)) ? Number(project.number) : idx + 1,
         studentCount,
@@ -6852,13 +6890,15 @@
         freePlaces,
         overCapacity,
         underMinFill,
+        displayCapacityBase,
+        capacityMarkerPercent,
         capacityFillPercent: capacity > 0 ? Math.min(100, Math.max(0, (studentCount / capacity) * 100)) : 0,
         ignoredWishCount,
         outsideChoiceCount,
         withChoiceCount,
-        withChoiceFillPercent: capacity > 0 ? Math.min(100, Math.max(0, (withChoiceCount / capacity) * 100)) : 0,
-        outsideChoiceFillPercent: capacity > 0 ? Math.min(100, Math.max(0, (outsideChoiceCount / capacity) * 100)) : 0,
-        ignoredWishFillPercent: capacity > 0 ? Math.min(100, Math.max(0, (ignoredWishCount / capacity) * 100)) : 0,
+        withChoiceFillPercent: Math.min(100, Math.max(0, (withChoiceCount / displayCapacityBase) * 100)),
+        outsideChoiceFillPercent: Math.min(100, Math.max(0, (outsideChoiceCount / displayCapacityBase) * 100)),
+        ignoredWishFillPercent: Math.min(100, Math.max(0, (ignoredWishCount / displayCapacityBase) * 100)),
         yearDiversity: yearSet.size,
         classDiversity: classSet.size
       };
@@ -6948,6 +6988,7 @@
                 <div class="project-capacity-fill with-choice" style="width:${metrics.withChoiceFillPercent.toFixed(1)}%" title="Mit Wunsch: ${metrics.withChoiceCount}"></div>
                 <div class="project-capacity-fill without-choice" style="width:${metrics.outsideChoiceFillPercent.toFixed(1)}%" title="Ohne Wunsch: ${metrics.outsideChoiceCount}"></div>
                 <div class="project-capacity-fill ignored-wish" style="width:${metrics.ignoredWishFillPercent.toFixed(1)}%" title="Wünsche ignoriert: ${metrics.ignoredWishCount}"></div>
+                ${metrics.overCapacity && metrics.capacity > 0 ? `<div class="project-capacity-marker" style="left:${metrics.capacityMarkerPercent.toFixed(1)}%" title="Kapazitätsgrenze bei ${metrics.capacity}"></div>` : ''}
               </div>
               <div class="project-capacity-label"><span>${metrics.studentCount}/${metrics.capacity || '—'} · min ${metrics.minFill || 0}</span><span>blau ${metrics.withChoiceCount} · rot ${metrics.outsideChoiceCount} · orange ${metrics.ignoredWishCount}</span></div>
             </div>
@@ -8628,7 +8669,27 @@
         const config = readUiConfig();
         const resolvedSpecial = buildResolvedSpecialImport(state.data, state.specialImport);
         const hardIgnoredPreassignments = buildHardIgnoredWishPreassignments(state.data, config, resolvedSpecial);
-        const solverData = createSolverDataWithSpecialAssignments(state.data, resolvedSpecial, config, hardIgnoredPreassignments);
+        if (hardIgnoredPreassignments.active && (hardIgnoredPreassignments.unassignedStudentIds?.size || 0) > 0) {
+          const blockedNames = (state.data.students || [])
+            .filter((student) => hardIgnoredPreassignments.unassignedStudentIds.has(student.id))
+            .map((student) => student.name)
+            .sort((a, b) => a.localeCompare(b, 'de'));
+          const preview = blockedNames.slice(0, 6).join(', ');
+          const suffix = blockedNames.length > 6 ? ` und ${blockedNames.length - 6} weitere` : '';
+          const message = `Die harte Regel „Ignorierte Wünsche gleichmäßig verteilen“ kann ${hardIgnoredPreassignments.unassignedStudentIds.size} Schüler vor dem Solver nicht innerhalb der freien, nicht-exklusiven und jahrgangspassenden Plätze unterbringen${preview ? ` (${preview}${suffix})` : ''}.`;
+          setStatus(els.solveStatus, 'err', escapeHtml(message));
+          await updateLiveStatus({
+            phase: 'Vorprüfung fehlgeschlagen',
+            stageText: 'Phase 0',
+            rulesText: 'Ignorierte Wünsche hart',
+            detail: message,
+            progress: 100,
+            logMessage: message
+          });
+          return;
+        }
+        const effectiveSolverConfig = buildEffectiveSolverConfig(config, resolvedSpecial, hardIgnoredPreassignments);
+        const solverData = createSolverDataWithSpecialAssignments(state.data, resolvedSpecial, effectiveSolverConfig, hardIgnoredPreassignments);
         const buildDisplayedAssignments = (solverAssignmentMap = null) => {
           const mergedMap = mergeAssignmentsWithSpecialCases(solverAssignmentMap, state.data, resolvedSpecial, hardIgnoredPreassignments);
           return assignmentMapToStructured(state.data, mergedMap);
@@ -8649,7 +8710,7 @@
               : (skippedCount ? `Vorab-Verteilung für ignorierte Wünsche fand keine passenden Projekte für ${skippedCount} Schüler.` : 'Keine Vorab-Verteilung für ignorierte Wünsche nötig.')
           });
         }
-        const precheck = precheckHardFeasibility(solverData, config);
+        const precheck = precheckHardFeasibility(solverData, effectiveSolverConfig);
         if (!precheck.ok) {
           setStatus(els.solveStatus, 'err', precheck.message);
           await updateLiveStatus({
@@ -8702,12 +8763,12 @@
                 : `Kompiliere reduziertes Modell${scopeSuffix} für schnelle Zulässigkeitssuche.`
             });
           }
-          return compileModel(solverData, config, glpk, mode, true, baseAssignmentMap, options);
+          return compileModel(solverData, effectiveSolverConfig, glpk, mode, true, baseAssignmentMap, options);
         }
 
-        const softStages = listActiveSoftStages(config);
+        const softStages = listActiveSoftStages(effectiveSolverConfig);
         const hasActiveSoftRules = softStages.length > 0;
-        const solverStageMode = config.solver?.stageMode || 'fast';
+        const solverStageMode = effectiveSolverConfig.solver?.stageMode || 'fast';
         const isIterativeStageMode = solverStageMode === 'iterative';
         let compiled = null;
         let optimizationCompiled = null;
@@ -8718,7 +8779,7 @@
         let provisionalAssignments = null;
         let provisionalAssignmentMap = new Map();
 
-        const heuristicStart = buildSimpleStartSolution(solverData, config);
+        const heuristicStart = buildSimpleStartSolution(solverData, effectiveSolverConfig);
         if (heuristicStart.ok && heuristicStart.assignment) {
           provisionalAssignments = buildDisplayedAssignments(heuristicStart.assignment);
           provisionalAssignmentMap = new Map(heuristicStart.assignment);
@@ -8747,7 +8808,7 @@
                 ? 'Kompiliere vollständiges Hard-Only-Modell für Phase 0.'
                 : 'Kompiliere reduziertes Hard-Only-Modell für Phase 0.'
             });
-            return compileModel(solverData, config, glpk, mode, false, null);
+            return compileModel(solverData, effectiveSolverConfig, glpk, mode, false, null);
           };
 
           compiled = await compileForFeasibility('smart');
@@ -8824,7 +8885,7 @@
             logMessage: `Optimierungsmodell für die erste Stufe erstellt: ${compileSummary}`
           });
         } else {
-          compiled = compileModel(solverData, config, glpk, 'smart', false, provisionalAssignmentMap);
+          compiled = compileModel(solverData, effectiveSolverConfig, glpk, 'smart', false, provisionalAssignmentMap);
           state.compiled = compiled;
           stageCount = 0;
         }
@@ -9167,7 +9228,7 @@
       state.resultDragStudentIds = [];
       state.openWishSections = Array.isArray(restored.openWishSections) ? restored.openWishSections : [];
       state.analysisUi = Object.assign({ projectSort: 'outsideChoice', classSort: 'wishRate', cohortMode: 'year' }, restored.analysisUi || {});
-      state.wishConsiderationThreshold = Math.max(0, Number(restored.wishConsiderationThreshold ?? ui.wishThreshold ?? 5) || 0);
+      state.wishConsiderationThreshold = Math.max(0, Number(restored.wishConsiderationThreshold ?? ui.wishThreshold ?? 3) || 0);
       state.resultPointerDownStudentId = null;
       state.resultPointerDownWasSelected = false;
       state.resultSuppressChipClick = false;
