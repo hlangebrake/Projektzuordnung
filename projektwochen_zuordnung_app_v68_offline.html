@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
@@ -1897,6 +1897,8 @@
       yearDiversity: { key: 'yearDiversity', label: 'Jahrgänge hart mischen' },
       classSpread: { key: 'classSpread', label: 'Klassen hart mischen' },
       classSplitLimit: { key: 'classSplitLimit', label: 'Klassen teilen hart beachten' },
+      classTogether: { key: 'classTogether', label: 'Klassen beisammen halten hart beachten' },
+      hardIgnoredWishBalance: { key: 'hardIgnoredWishBalance', label: 'Ignorierte Wünsche hart gleichmäßig verteilen' },
       allowedYears: { key: 'allowedYears', label: 'Erlaubte Jahrgänge hart beachten' },
       togetherPairs: { key: 'togetherPairs', label: 'Freundespaare hart zusammen' },
       separatePairs: { key: 'separatePairs', label: 'Konfliktpaare hart trennen' },
@@ -1913,6 +1915,8 @@
       allowedYears: { key: 'allowedYears', label: 'Erlaubte Jahrgänge bevorzugen' },
       togetherPairs: { key: 'togetherPairs', label: 'Freundespaare zusammenhalten' },
       classSplitLimit: { key: 'classSplitLimit', label: 'Klassen teilen' },
+      classTogether: { key: 'classTogether', label: 'Klassen beisammen halten' },
+      ignoredWishBalance: { key: 'ignoredWishBalance', label: 'Ignorierte Wünsche gleichmäßig verteilen' },
       separatePairs: { key: 'separatePairs', label: 'Konfliktpaare trennen' },
       balanceLoad: { key: 'balanceLoad', label: 'Belegung balancieren' },
       wishFairness: { key: 'wishFairness', label: 'Faire Wunscherfüllung zwischen Klassen' }
@@ -1991,6 +1995,31 @@
         defaultLevel: 2,
         defaultWeight: 20,
         defaultMax: 2
+      },
+      classTogether: {
+        key: 'classTogether',
+        label: 'Klassen beisammen halten',
+        hardDescription: 'Wenn eine Klasse in einem Projekt vorkommt, dann mit mindestens so vielen Schülern dieser Klasse wie im Feld „Minimal“ eingestellt.',
+        softDescription: 'Zu kleine Klasseninseln innerhalb eines Projekts bestrafen, bis mindestens der Minimalwert erreicht ist.',
+        hardKey: 'classTogether',
+        softKey: 'classTogether',
+        capabilities: ['hard', 'soft'],
+        defaultPlacement: 'inactive',
+        defaultLevel: 2,
+        defaultWeight: 15,
+        defaultMin: 2
+      },
+      ignoredWishBalance: {
+        key: 'ignoredWishBalance',
+        label: 'Ignorierte Wünsche gleichmäßig verteilen',
+        hardDescription: 'Schüler mit ignorierten Wünschen möglichst gleichmäßig auf die für sie verfügbaren Projekte verteilen.',
+        softDescription: 'Abweichungen von einer gleichmäßigen Verteilung der Schüler mit ignorierten Wünschen minimieren.',
+        hardKey: 'hardIgnoredWishBalance',
+        softKey: 'ignoredWishBalance',
+        capabilities: ['hard', 'soft'],
+        defaultPlacement: 'inactive',
+        defaultLevel: 3,
+        defaultWeight: 10
       },
       allowedYears: {
         key: 'allowedYears',
@@ -2489,6 +2518,25 @@
       return groups;
     }
 
+    function getClassTogetherMinimum(config) {
+      return normalizeRuleMinValue('classTogether', config?.ruleParams?.classTogether?.min ?? config?.soft?.classTogether?.min ?? config?.hard?.classTogether?.min, RULE_LIBRARY.classTogether?.defaultMin ?? 1);
+    }
+
+    function buildIgnoredWishStudentIds(data) {
+      return (data?.students || []).filter((student) => isStudentWishIgnored(student.id, data)).map((student) => student.id);
+    }
+
+    function buildIgnoredWishBalanceProjectIds(data, candidateProjectIds = null) {
+      const sourceIds = Array.isArray(candidateProjectIds) && candidateProjectIds.length
+        ? candidateProjectIds
+        : (data?.projects || []).map((project) => project.id);
+      const positiveCapacityIds = sourceIds.filter((projectId) => {
+        const project = (data?.projects || []).find((entry) => entry.id === projectId);
+        return Number(project?.capacity || 0) > 0;
+      });
+      return positiveCapacityIds.length ? positiveCapacityIds : [...sourceIds];
+    }
+
     function addPresenceVarsForGroups(ctx, prefix, groups) {
       const presenceByProject = new Map();
       ctx.data.projects.forEach((project) => {
@@ -2576,6 +2624,39 @@
       }
     }
 
+    class HardRuleClassTogether {
+      apply(ctx) {
+        const classes = buildStudentGroupMembers(ctx.data, 'classMap');
+        if (!classes.size) return;
+        const minimum = getClassTogetherMinimum(ctx.config);
+        ctx.data.projects.forEach((project) => {
+          for (const [className, studentIds] of classes.entries()) {
+            const coeffs = new Map();
+            studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, project.id);
+              if (x) coeffs.set(x, 1);
+            });
+            if (!coeffs.size) continue;
+            const effectiveMinimum = Math.min(minimum, coeffs.size);
+            const token = sanitizeToken(className);
+            const present = ctx.builder.addBinary(`classtogether_present__${project.id}__${token}`);
+            const upper = new Map(coeffs);
+            upper.set(present, -studentIds.length);
+            ctx.builder.addConstraint(`classtogether_hi__${project.id}__${token}`, upper, ctx.glpk.GLP_UP, 0, 0);
+            const lower = new Map(coeffs);
+            lower.set(present, -effectiveMinimum);
+            ctx.builder.addConstraint(`classtogether_lo__${project.id}__${token}`, lower, ctx.glpk.GLP_LO, 0, 0);
+          }
+        });
+      }
+    }
+
+    class HardRuleIgnoredWishBalance {
+      apply(ctx) {
+        // Diese Regel wird vor dem Solver als Vorab-Zuordnung umgesetzt.
+      }
+    }
+
     class SoftRuleYearDiversity {
       apply(ctx) {
         const years = buildStudentGroupMembers(ctx.data, 'yearMap');
@@ -2625,6 +2706,77 @@
             ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, limit);
             expr.set(overflow, (expr.get(overflow) || 0) - 1);
           }
+        });
+        return expr;
+      }
+    }
+
+    class SoftRuleClassTogether {
+      apply(ctx) {
+        const classes = buildStudentGroupMembers(ctx.data, 'classMap');
+        if (!classes.size) return new Map();
+        const minimum = getClassTogetherMinimum(ctx.config);
+        const expr = new Map();
+        ctx.data.projects.forEach((project) => {
+          for (const [className, studentIds] of classes.entries()) {
+            const coeffs = new Map();
+            studentIds.forEach((studentId) => {
+              const x = ctx.getX(studentId, project.id);
+              if (x) coeffs.set(x, 1);
+            });
+            if (!coeffs.size) continue;
+            const effectiveMinimum = Math.min(minimum, coeffs.size);
+            const token = sanitizeToken(className);
+            const present = ctx.builder.addBinary(`soft_classtogether_present__${project.id}__${token}`);
+            const upper = new Map(coeffs);
+            upper.set(present, -studentIds.length);
+            ctx.builder.addConstraint(`soft_classtogether_hi__${project.id}__${token}`, upper, ctx.glpk.GLP_UP, 0, 0);
+            const shortfall = ctx.builder.addContinuous(`classtogether_short__${project.id}__${token}`, 0);
+            const lower = new Map(coeffs);
+            lower.set(present, -effectiveMinimum);
+            lower.set(shortfall, 1);
+            ctx.builder.addConstraint(`soft_classtogether_lo__${project.id}__${token}`, lower, ctx.glpk.GLP_LO, 0, 0);
+            expr.set(shortfall, (expr.get(shortfall) || 0) - 1);
+          }
+        });
+        return expr;
+      }
+    }
+
+    class SoftRuleIgnoredWishBalance {
+      apply(ctx) {
+        const ignoredStudentIds = buildIgnoredWishStudentIds(ctx.data);
+        if (!ignoredStudentIds.length) return new Map();
+        const candidateProjectIds = ctx.data.projects
+          .map((project) => project.id)
+          .filter((projectId) => ignoredStudentIds.some((studentId) => !!ctx.getX(studentId, projectId)));
+        const projectIds = buildIgnoredWishBalanceProjectIds(ctx.data, candidateProjectIds);
+        if (!projectIds.length) return new Map();
+        const target = ignoredStudentIds.length / projectIds.length;
+        const expr = new Map();
+        projectIds.forEach((projectId) => {
+          const dPos = ctx.builder.addContinuous(`ignoredwish_dpos__${projectId}`, 0);
+          const dNeg = ctx.builder.addContinuous(`ignoredwish_dneg__${projectId}`, 0);
+
+          const c1 = new Map();
+          ignoredStudentIds.forEach((studentId) => {
+            const x = ctx.getX(studentId, projectId);
+            if (x) c1.set(x, 1);
+          });
+          if (!c1.size) return;
+          c1.set(dPos, (c1.get(dPos) || 0) - 1);
+          ctx.builder.addConstraint(`ignoredwishbalance_pos__${projectId}`, c1, ctx.glpk.GLP_UP, 0, target);
+
+          const c2 = new Map();
+          ignoredStudentIds.forEach((studentId) => {
+            const x = ctx.getX(studentId, projectId);
+            if (x) c2.set(x, -1);
+          });
+          c2.set(dNeg, -1);
+          ctx.builder.addConstraint(`ignoredwishbalance_neg__${projectId}`, c2, ctx.glpk.GLP_UP, 0, -target);
+
+          expr.set(dPos, (expr.get(dPos) || 0) - 1);
+          expr.set(dNeg, (expr.get(dNeg) || 0) - 1);
         });
         return expr;
       }
@@ -2761,6 +2913,8 @@
       yearDiversity: new HardRuleYearDiversity(),
       classSpread: new HardRuleClassSpread(),
       classSplitLimit: new HardRuleClassSplitLimit(),
+      classTogether: new HardRuleClassTogether(),
+      hardIgnoredWishBalance: new HardRuleIgnoredWishBalance(),
       allowedYears: new HardRuleAllowedYears(),
       togetherPairs: new HardRuleTogetherPairs(),
       separatePairs: new HardRuleSeparatePairs(),
@@ -2774,6 +2928,8 @@
       yearDiversity: new SoftRuleYearDiversity(),
       classSpread: new SoftRuleClassSpread(),
       classSplitLimit: new SoftRuleClassSplitLimit(),
+      classTogether: new SoftRuleClassTogether(),
+      ignoredWishBalance: new SoftRuleIgnoredWishBalance(),
       allowedYears: new SoftRuleAllowedYears(),
       togetherPairs: new SoftRuleTogetherPairs(),
       separatePairs: new SoftRuleSeparatePairs(),
@@ -3515,12 +3671,91 @@
       };
     }
 
-    function createSolverDataWithSpecialAssignments(data = state.data, resolvedSpecial = buildResolvedSpecialImport(data)) {
+    function buildHardIgnoredWishPreassignments(data = state.data, config = readUiConfig(), resolvedSpecial = buildResolvedSpecialImport(data)) {
+      const empty = {
+        active: false,
+        ignoredStudentIds: new Set(),
+        assignedMap: new Map(),
+        unassignedStudentIds: new Set(),
+        candidateProjectIds: [],
+        sourceStudentIds: []
+      };
+      if (!data || !config?.hard?.hardIgnoredWishBalance) return empty;
+
+      const blockedStudentIds = resolvedSpecial?.ignoredStudentIds || new Set();
+      const sourceStudentIds = buildIgnoredWishStudentIds(data).filter((studentId) => !blockedStudentIds.has(studentId));
+      if (!sourceStudentIds.length) return { ...empty, active: true, sourceStudentIds: [] };
+
+      const candidateProjects = (data.projects || []).filter((project) => !isProjectExclusive(project));
+      if (!candidateProjects.length) {
+        return {
+          active: true,
+          ignoredStudentIds: new Set(),
+          assignedMap: new Map(),
+          unassignedStudentIds: new Set(sourceStudentIds),
+          candidateProjectIds: [],
+          sourceStudentIds
+        };
+      }
+
+      const preassignedLoads = new Map(candidateProjects.map((project) => [project.id, 0]));
+      (resolvedSpecial?.beforeAssignedMap || new Map()).forEach((projectId) => {
+        if (preassignedLoads.has(projectId)) preassignedLoads.set(projectId, (preassignedLoads.get(projectId) || 0) + 1);
+      });
+
+      const projectOrderMeta = new Map(candidateProjects.map((project, index) => [project.id, {
+        number: Number.isFinite(Number(project.number)) ? Number(project.number) : (index + 1),
+        name: String(project.name || '')
+      }]));
+
+      const assignedMap = new Map();
+      const unassignedStudentIds = new Set();
+      sourceStudentIds.forEach((studentId) => {
+        const studentYear = data.yearMap?.get(studentId) || '';
+        const eligibleProjects = candidateProjects.filter((project) => projectAllowsStudentYear(project, studentYear));
+        if (!eligibleProjects.length) {
+          unassignedStudentIds.add(studentId);
+          return;
+        }
+        eligibleProjects.sort((a, b) => {
+          const loadDiff = (preassignedLoads.get(a.id) || 0) - (preassignedLoads.get(b.id) || 0);
+          if (loadDiff !== 0) return loadDiff;
+          const aMeta = projectOrderMeta.get(a.id) || { number: 0, name: '' };
+          const bMeta = projectOrderMeta.get(b.id) || { number: 0, name: '' };
+          if (aMeta.number !== bMeta.number) return aMeta.number - bMeta.number;
+          return aMeta.name.localeCompare(bMeta.name, 'de');
+        });
+        const projectId = eligibleProjects[0]?.id || null;
+        if (!projectId) {
+          unassignedStudentIds.add(studentId);
+          return;
+        }
+        assignedMap.set(studentId, projectId);
+        preassignedLoads.set(projectId, (preassignedLoads.get(projectId) || 0) + 1);
+      });
+
+      return {
+        active: true,
+        ignoredStudentIds: new Set(assignedMap.keys()),
+        assignedMap,
+        unassignedStudentIds,
+        candidateProjectIds: candidateProjects.map((project) => project.id),
+        sourceStudentIds
+      };
+    }
+
+    function createSolverDataWithSpecialAssignments(data = state.data, resolvedSpecial = buildResolvedSpecialImport(data), config = readUiConfig(), hardIgnoredPreassignments = buildHardIgnoredWishPreassignments(data, config, resolvedSpecial)) {
       if (!data) return null;
-      const ignoredStudentIds = resolvedSpecial?.ignoredStudentIds || new Set();
+      const ignoredStudentIds = new Set([
+        ...((resolvedSpecial?.ignoredStudentIds || new Set()).values()),
+        ...((hardIgnoredPreassignments?.ignoredStudentIds || new Set()).values())
+      ]);
       const beforeAssignedMap = resolvedSpecial?.beforeAssignedMap || new Map();
       const projectLoadAdjustments = new Map((data.projects || []).map((project) => [project.id, 0]));
       beforeAssignedMap.forEach((projectId) => {
+        projectLoadAdjustments.set(projectId, (projectLoadAdjustments.get(projectId) || 0) + 1);
+      });
+      (hardIgnoredPreassignments?.assignedMap || new Map()).forEach((projectId) => {
         projectLoadAdjustments.set(projectId, (projectLoadAdjustments.get(projectId) || 0) + 1);
       });
 
@@ -3549,9 +3784,10 @@
       };
     }
 
-    function mergeAssignmentsWithSpecialCases(baseAssignmentMap, data = state.data, resolvedSpecial = buildResolvedSpecialImport(data)) {
+    function mergeAssignmentsWithSpecialCases(baseAssignmentMap, data = state.data, resolvedSpecial = buildResolvedSpecialImport(data), hardIgnoredPreassignments = buildHardIgnoredWishPreassignments(data, readUiConfig(), resolvedSpecial)) {
       const merged = new Map(baseAssignmentMap || []);
       (resolvedSpecial?.beforeAssignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
+      (hardIgnoredPreassignments?.assignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
       (resolvedSpecial?.afterAssignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
       return merged;
     }
@@ -3833,6 +4069,13 @@
       return Math.max(1, Math.round(raw));
     }
 
+    function normalizeRuleMinValue(ruleKey, value, fallback = null) {
+      const rule = RULE_LIBRARY[ruleKey] || {};
+      const base = Number.isFinite(Number(rule.defaultMin)) ? Number(rule.defaultMin) : 1;
+      const raw = Number.isFinite(Number(value)) ? Number(value) : Number(fallback != null ? fallback : base);
+      return Math.max(1, Math.round(raw));
+    }
+
     function normalizeRuleUiState(ruleUi = null) {
       const defaults = createDefaultRuleUiState();
       const normalized = {
@@ -3846,7 +4089,8 @@
           placement: ['inactive', 'hard', 'soft'].includes(raw.placement) ? raw.placement : (defaults.rules[rule.key]?.placement || 'inactive'),
           level: Math.max(1, Number(raw.level || defaults.rules[rule.key]?.level || rule.defaultLevel || 1)),
           weight: normalizeSoftSliderWeight(raw.weight ?? defaults.rules[rule.key]?.weight ?? rule.defaultWeight ?? 1),
-          max: normalizeRuleMaxValue(rule.key, raw.max, defaults.rules[rule.key]?.max ?? rule.defaultMax ?? 1)
+          max: normalizeRuleMaxValue(rule.key, raw.max, defaults.rules[rule.key]?.max ?? rule.defaultMax ?? 1),
+          min: normalizeRuleMinValue(rule.key, raw.min, defaults.rules[rule.key]?.min ?? rule.defaultMin ?? 1)
         };
       });
       return normalized;
@@ -3860,7 +4104,8 @@
           placement: rule.defaultPlacement,
           level: rule.defaultLevel || 1,
           weight: normalizeSoftSliderWeight(rule.defaultWeight ?? 1),
-          max: normalizeRuleMaxValue(rule.key, rule.defaultMax ?? 1)
+          max: normalizeRuleMaxValue(rule.key, rule.defaultMax ?? 1),
+          min: normalizeRuleMinValue(rule.key, rule.defaultMin ?? 1)
         };
       });
       const maxDefaultLevel = Math.max(3, ...Object.values(rules).map((rule) => rule.level || 1));
@@ -3894,7 +4139,8 @@
         placement: 'inactive',
         level: base.defaultLevel || 1,
         weight: base.defaultWeight ?? 1,
-        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1)
+        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1),
+        min: normalizeRuleMinValue(ruleKey, base.defaultMin ?? 1)
       };
       renderRuleWorkbench();
     }
@@ -3908,7 +4154,8 @@
         placement: 'inactive',
         level: base.defaultLevel || 1,
         weight: base.defaultWeight ?? 1,
-        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1)
+        max: normalizeRuleMaxValue(ruleKey, base.defaultMax ?? 1),
+        min: normalizeRuleMinValue(ruleKey, base.defaultMin ?? 1)
       };
       renderRuleWorkbench();
     }
@@ -3959,15 +4206,24 @@
       const isSoft = settings.placement === 'soft';
       const weight = normalizeSoftSliderWeight(settings.weight ?? rule.defaultWeight ?? 1);
       const maxValue = normalizeRuleMaxValue(ruleKey, settings.max, rule.defaultMax ?? 1);
+      const minValue = normalizeRuleMinValue(ruleKey, settings.min, rule.defaultMin ?? 1);
       const description = getRuleDescription(rule, settings);
-      const maxField = rule.key === 'classSplitLimit'
-        ? `
+      let paramField = "";
+      if (rule.key === 'classSplitLimit') {
+        paramField = `
           <div class="rule-param-wrap">
             <label class="rule-param-label" for="rule-max-${escapeHtml(ruleKey)}">Maximal</label>
             <input id="rule-max-${escapeHtml(ruleKey)}" class="rule-param-input" data-rule-max="${ruleKey}" type="number" min="1" step="1" value="${maxValue}" />
           </div>
-        `
-        : '';
+        `;
+      } else if (rule.key === 'classTogether') {
+        paramField = `
+          <div class="rule-param-wrap">
+            <label class="rule-param-label" for="rule-min-${escapeHtml(ruleKey)}">Minimal</label>
+            <input id="rule-min-${escapeHtml(ruleKey)}" class="rule-param-input" data-rule-min="${ruleKey}" type="number" min="1" step="1" value="${minValue}" />
+          </div>
+        `;
+      }
       return `
         <article class="rule-card" draggable="true" data-rule-key="${ruleKey}">
           <div class="rule-card-header">
@@ -3984,7 +4240,7 @@
                 <div class="rule-weight-value">${weight}</div>
               </div>
             ` : ''}
-            ${maxField}
+            ${paramField}
           </div>
         </article>
       `;
@@ -4131,6 +4387,17 @@
           if (valueBox) valueBox.textContent = String(normalizeSoftSliderWeight(ui.rules[ruleKey].weight));
         });
       });
+      document.querySelectorAll('[data-rule-min]').forEach((input) => {
+        const sync = (e) => {
+          const ruleKey = e.currentTarget.dataset.ruleMin;
+          const ui = ensureRuleUiState();
+          const normalized = normalizeRuleMinValue(ruleKey, e.currentTarget.value, RULE_LIBRARY[ruleKey]?.defaultMin ?? 1);
+          ui.rules[ruleKey].min = normalized;
+          e.currentTarget.value = String(normalized);
+        };
+        input.addEventListener('input', sync);
+        input.addEventListener('change', sync);
+      });
       document.querySelectorAll('[data-rule-max]').forEach((input) => {
         const sync = (e) => {
           const ruleKey = e.currentTarget.dataset.ruleMax;
@@ -4159,7 +4426,8 @@
           placement: 'inactive',
           level: Number(prev.level || rule.defaultLevel || 1),
           weight: normalizeSoftSliderWeight(prev.weight ?? rule.defaultWeight ?? 1),
-          max: normalizeRuleMaxValue(rule.key, prev.max, rule.defaultMax ?? 1)
+          max: normalizeRuleMaxValue(rule.key, prev.max, rule.defaultMax ?? 1),
+          min: normalizeRuleMinValue(rule.key, prev.min, rule.defaultMin ?? 1)
         };
       });
 
@@ -4180,6 +4448,8 @@
           const slider = card.querySelector('[data-rule-weight]');
           const weight = slider ? Number(slider.value || cloned.rules[ruleKey].weight || 0) : cloned.rules[ruleKey].weight;
           const maxInput = card.querySelector('[data-rule-max]');
+          const minInput = card.querySelector('[data-rule-min]');
+          const minValue = minInput ? Number(minInput.value || cloned.rules[ruleKey].min || RULE_LIBRARY[ruleKey].defaultMin || 1) : cloned.rules[ruleKey].min;
           const maxValue = maxInput ? Number(maxInput.value || cloned.rules[ruleKey].max || RULE_LIBRARY[ruleKey].defaultMax || 1) : cloned.rules[ruleKey].max;
           const isInactive = placement === 'inactive';
           cloned.rules[ruleKey] = {
@@ -4187,7 +4457,8 @@
             placement,
             level: placement === 'soft' ? (level || cloned.rules[ruleKey].level || 1) : Number(cloned.rules[ruleKey].level || 1),
             weight: Number.isFinite(weight) ? normalizeSoftSliderWeight(weight) : normalizeSoftSliderWeight(RULE_LIBRARY[ruleKey].defaultWeight ?? 1),
-            max: normalizeRuleMaxValue(ruleKey, maxValue, RULE_LIBRARY[ruleKey].defaultMax ?? 1)
+            max: normalizeRuleMaxValue(ruleKey, maxValue, RULE_LIBRARY[ruleKey].defaultMax ?? 1),
+            min: normalizeRuleMinValue(ruleKey, minValue, RULE_LIBRARY[ruleKey].defaultMin ?? 1)
           };
         });
       });
@@ -4203,8 +4474,12 @@
       const ruleParams = {
         classSplitLimit: {
           max: normalizeRuleMaxValue('classSplitLimit', ui.rules.classSplitLimit?.max, RULE_LIBRARY.classSplitLimit?.defaultMax ?? 1)
+        },
+        classTogether: {
+          min: normalizeRuleMinValue('classTogether', ui.rules.classTogether?.min, RULE_LIBRARY.classTogether?.defaultMin ?? 1)
         }
       };
+
 
       Object.entries(RULE_LIBRARY).forEach(([ruleKey, rule]) => {
         const settings = ui.rules[ruleKey];
@@ -4217,7 +4492,8 @@
             active: true,
             level: Math.max(1, Number(settings.level || rule.defaultLevel || 1)),
             weight: normalizeSoftSliderWeight(settings.weight ?? rule.defaultWeight ?? 1),
-            max: normalizeRuleMaxValue(rule.key, settings.max, rule.defaultMax ?? 1)
+            max: normalizeRuleMaxValue(rule.key, settings.max, rule.defaultMax ?? 1),
+            min: normalizeRuleMinValue(rule.key, settings.min, rule.defaultMin ?? 1)
           };
         }
       });
@@ -5038,9 +5314,9 @@
         }
       }
       if (compiled.config.hard.hardBalanceLoad) {
-        const lower = Math.floor(state.data.students.length / Math.max(state.data.projects.length, 1));
-        const upper = Math.ceil(state.data.students.length / Math.max(state.data.projects.length, 1));
-        for (const project of state.data.projects) {
+        const lower = Math.floor(data.students.length / Math.max(data.projects.length, 1));
+        const upper = Math.ceil(data.students.length / Math.max(data.projects.length, 1));
+        for (const project of data.projects) {
           const load = loads.get(project.id) || 0;
           if (load < lower || load > upper) {
             return { ok: false, reason: `Harte Balance für ${project.name} verletzt.` };
@@ -5098,11 +5374,17 @@
       const positiveCaps = (data?.projects || []).map((project) => Number(project?.capacity || 0)).filter((value) => Number.isFinite(value) && value > 0);
       const totalCapacity = positiveCaps.reduce((sum, value) => sum + value, 0);
       const averagePositiveCapacity = positiveCaps.length ? (totalCapacity / positiveCaps.length) : 1;
+      const ignoredWishStudentIds = buildIgnoredWishStudentIds(data);
+      const ignoredWishBalanceProjectIds = buildIgnoredWishBalanceProjectIds(data);
       return {
         projectById: new Map((data?.projects || []).map((project) => [project.id, project])),
         friendMateMap: buildFriendMateMap(config?.pairs?.friends || []),
         conflictMateMap: buildConflictMateMap(config?.pairs?.conflicts || []),
         wishFairnessEntries: buildWishFairnessClassEntries(data),
+        ignoredWishStudentIds,
+        ignoredWishStudentSet: new Set(ignoredWishStudentIds),
+        ignoredWishBalanceProjectIds,
+        targetIgnoredWishLoad: ignoredWishBalanceProjectIds.length ? (ignoredWishStudentIds.length / ignoredWishBalanceProjectIds.length) : 0,
         totalCapacity,
         averagePositiveCapacity,
         targetLoad: (data?.students?.length || 0) / Math.max((data?.projects?.length || 0), 1),
@@ -5117,6 +5399,7 @@
       const projectClasses = new Map((data?.projects || []).map((project) => [project.id, new Set()]));
       const projectYearCounts = new Map((data?.projects || []).map((project) => [project.id, new Map()]));
       const projectClassCounts = new Map((data?.projects || []).map((project) => [project.id, new Map()]));
+      const ignoredWishCounts = new Map((data?.projects || []).map((project) => [project.id, 0]));
       const chosenSatisfied = new Map();
       const allowedYearSatisfied = new Map();
       const fulfilledByClass = new Map((evalCache?.wishFairnessEntries || []).map((entry) => [entry.className, 0]));
@@ -5147,6 +5430,9 @@
           const classCounts = projectClassCounts.get(projectId);
           classCounts.set(className, (classCounts.get(className) || 0) + 1);
         }
+        if (isStudentWishIgnored(student.id, data)) {
+          ignoredWishCounts.set(projectId, (ignoredWishCounts.get(projectId) || 0) + 1);
+        }
 
         const project = evalCache?.projectById?.get(projectId);
         const allowed = !!(year && projectAllowsStudentYear(project, year));
@@ -5164,6 +5450,7 @@
         projectClasses,
         projectYearCounts,
         projectClassCounts,
+        ignoredWishCounts,
         chosenSatisfied,
         allowedYearSatisfied,
         fulfilledByClass
@@ -5217,6 +5504,15 @@
           return (data?.projects || []).reduce((sum, project) => {
             const load = metrics.loads.get(project.id) || 0;
             return sum - Math.abs(getProjectRelativeLoad(project.id, load, evalCache, data) - targetRatio);
+          }, 0);
+        }
+        case 'ignoredWishBalance': {
+          const projectIds = evalCache?.ignoredWishBalanceProjectIds || [];
+          const target = evalCache?.targetIgnoredWishLoad ?? 0;
+          if (!projectIds.length) return 0;
+          return projectIds.reduce((sum, projectId) => {
+            const ignoredCount = metrics.ignoredWishCounts.get(projectId) || 0;
+            return sum - Math.abs(ignoredCount - target);
           }, 0);
         }
         case 'wishFairness': {
@@ -5322,6 +5618,16 @@
               priorities.set(studentId, (priorities.get(studentId) || 0) + weight * delta * 10);
             });
           });
+        } else if (rule.key === 'ignoredWishBalance') {
+          const target = evalCache?.targetIgnoredWishLoad ?? 0;
+          (evalCache?.ignoredWishBalanceProjectIds || []).forEach((projectId) => {
+            const delta = (metrics.ignoredWishCounts.get(projectId) || 0) - target;
+            if (delta <= 0.0001) return;
+            (metrics.projectMembers.get(projectId) || []).forEach((studentId) => {
+              if (!isStudentWishIgnored(studentId, data)) return;
+              priorities.set(studentId, (priorities.get(studentId) || 0) + weight * delta * 8);
+            });
+          });
         } else if (rule.key === 'classSpread') {
           (data?.projects || []).forEach((project) => {
             const classCounts = metrics.projectClassCounts.get(project.id) || new Map();
@@ -5368,6 +5674,7 @@
       const studentClass = data?.classMap?.get(studentId) || '';
       const choices = getEffectiveChoiceSet(studentId, data);
       const targetLoadRatio = evalCache?.targetLoadRatio ?? 0;
+      const ignoredWishStudent = isStudentWishIgnored(studentId, data);
 
       return [...new Set(domain)].filter((projectId) => projectId && projectId !== currentProjectId).map((projectId) => {
         const project = evalCache?.projectById?.get(projectId);
@@ -5382,6 +5689,11 @@
           if (rule.key === 'softCapacity') score += weight * Math.max(0, Number(project?.capacity || 0) - load);
           if (rule.key === 'softMinFill') score += weight * Math.max(0, Number(project?.minFill || 0) - load) * 1.5;
           if (rule.key === 'balanceLoad') score += weight * Math.max(0, targetLoadRatio - getProjectRelativeLoad(projectId, load, evalCache, data)) * 10;
+          if (rule.key === 'ignoredWishBalance' && ignoredWishStudent) {
+            const targetIgnored = evalCache?.targetIgnoredWishLoad ?? 0;
+            const currentIgnored = metrics.ignoredWishCounts.get(projectId) || 0;
+            score += weight * Math.max(0, targetIgnored - currentIgnored) * 8;
+          }
           if (rule.key === 'classSpread') {
             const classCounts = metrics.projectClassCounts.get(projectId) || new Map();
             score += weight * ((classCounts.get(studentClass) || 0) ? -2 : 2);
@@ -5683,6 +5995,24 @@
           .map((entry) => entry.id);
         stressedProjects.forEach((projectId) => addStudentIdsLimited(selected, metrics.projectMembers.get(projectId) || [], desiredSize * 3));
         stressedProjects.forEach((projectId) => seedProjects.add(projectId));
+      }
+
+      if (stageHasSoftRule(stage, 'ignoredWishBalance')) {
+        const targetIgnored = evalCache?.targetIgnoredWishLoad ?? 0;
+        const stressedIgnoredProjects = [...(evalCache?.ignoredWishBalanceProjectIds || [])]
+          .map((projectId) => ({
+            id: projectId,
+            delta: Math.abs((metrics.ignoredWishCounts.get(projectId) || 0) - targetIgnored)
+          }))
+          .filter((entry) => entry.delta > 0.0001)
+          .sort((a, b) => b.delta - a.delta)
+          .slice(0, 4)
+          .map((entry) => entry.id);
+        stressedIgnoredProjects.forEach((projectId) => {
+          const ignoredMembers = (metrics.projectMembers.get(projectId) || []).filter((studentId) => isStudentWishIgnored(studentId, data));
+          addStudentIdsLimited(selected, ignoredMembers, desiredSize * 3);
+          seedProjects.add(projectId);
+        });
       }
 
       if (stageHasSoftRule(stage, 'yearDiversity')) {
@@ -8297,11 +8627,28 @@
 
         const config = readUiConfig();
         const resolvedSpecial = buildResolvedSpecialImport(state.data, state.specialImport);
-        const solverData = createSolverDataWithSpecialAssignments(state.data, resolvedSpecial);
+        const hardIgnoredPreassignments = buildHardIgnoredWishPreassignments(state.data, config, resolvedSpecial);
+        const solverData = createSolverDataWithSpecialAssignments(state.data, resolvedSpecial, config, hardIgnoredPreassignments);
         const buildDisplayedAssignments = (solverAssignmentMap = null) => {
-          const mergedMap = mergeAssignmentsWithSpecialCases(solverAssignmentMap, state.data, resolvedSpecial);
+          const mergedMap = mergeAssignmentsWithSpecialCases(solverAssignmentMap, state.data, resolvedSpecial, hardIgnoredPreassignments);
           return assignmentMapToStructured(state.data, mergedMap);
         };
+        if (hardIgnoredPreassignments.active) {
+          const assignedCount = hardIgnoredPreassignments.assignedMap?.size || 0;
+          const skippedCount = hardIgnoredPreassignments.unassignedStudentIds?.size || 0;
+          await updateLiveStatus({
+            phase: 'Vorab-Zuordnung',
+            stageText: 'Phase 0',
+            rulesText: 'Ignorierte Wünsche hart',
+            detail: assignedCount
+              ? `${assignedCount} Schüler mit ignorierten Wünschen wurden vorab verteilt.${skippedCount ? ` ${skippedCount} konnten mangels passender nicht-exklusiver Projekte im Solver verbleiben.` : ''}`
+              : (skippedCount ? `${skippedCount} Schüler mit ignorierten Wünschen konnten nicht vorab verteilt werden und bleiben im Solver.` : 'Keine zusätzlichen Vorab-Zuordnungen erforderlich.'),
+            progress: 8,
+            logMessage: assignedCount
+              ? `Harte Regel „Ignorierte Wünsche gleichmäßig verteilen“ hat ${assignedCount} Schüler vorab auf Projekte verteilt.${skippedCount ? ` ${skippedCount} blieben ohne passenden Vorab-Platz im Solver.` : ''}`
+              : (skippedCount ? `Vorab-Verteilung für ignorierte Wünsche fand keine passenden Projekte für ${skippedCount} Schüler.` : 'Keine Vorab-Verteilung für ignorierte Wünsche nötig.')
+          });
+        }
         const precheck = precheckHardFeasibility(solverData, config);
         if (!precheck.ok) {
           setStatus(els.solveStatus, 'err', precheck.message);
