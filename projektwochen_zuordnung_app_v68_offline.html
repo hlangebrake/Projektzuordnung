@@ -8072,6 +8072,34 @@
       }).filter((row) => row.totalChoices > 0)
         .sort((a, b) => Number(a.number) - Number(b.number));
 
+      const theoreticalYearShareByProjectRows = state.data.projects.map((project, idx) => {
+        const segments = projectYearLabels
+          .map((label, yearIndex) => {
+            const meta = projectYearMeta.get(label) || { studentCount: 0, eligibleProjectCount: 0 };
+            const rawYear = String(label || '').replace(/^Jg\.\s*/i, '').trim();
+            if (!meta.studentCount || !meta.eligibleProjectCount) return null;
+            if (!projectAllowsStudentYear(project, rawYear)) return null;
+            const value = meta.studentCount / meta.eligibleProjectCount;
+            return value > 0 ? {
+              key: label,
+              value,
+              color: getAnalysisYearColor(label, yearIndex),
+              label,
+              title: `${label}: theoretisch ${value.toFixed(2)} Schüler für #${getProjectDisplayNumber(project, idx)} ${project.name}`
+            } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => parseYearGroup(a.label) - parseYearGroup(b.label) || a.label.localeCompare(b.label, 'de', { numeric: true, sensitivity: 'base' }));
+        return {
+          projectId: project.id,
+          number: getProjectDisplayNumber(project, idx),
+          name: project.name,
+          totalShare: segments.reduce((sum, segment) => sum + segment.value, 0),
+          segments
+        };
+      }).filter((row) => row.totalShare > 0)
+        .sort((a, b) => Number(a.number) - Number(b.number));
+
       return {
         projectStats,
         classRows,
@@ -8086,6 +8114,7 @@
         projectYearMeta,
         projectChoiceByYearRows,
         yearChoiceByProjectRows,
+        theoreticalYearShareByProjectRows,
         projectStatusCounts
       };
     }
@@ -8537,6 +8566,30 @@
           </div>
         `
         : '';
+      const theoreticalYearShareByProjectCharts = (details?.theoreticalYearShareByProjectRows || []).length
+        ? `
+          <div class="analysis-pie-grid">
+            ${(details?.theoreticalYearShareByProjectRows || []).map((row) => `
+              <div class="analysis-pie-card">
+                <h4 class="analysis-pie-title">#${escapeHtml(String(row.number))} ${escapeHtml(row.name)}</h4>
+                <div class="analysis-pie-subtitle">${row.totalShare.toFixed(2)} theoretische Schüler gesamt</div>
+                <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.segments, `Theoretische Jahrgangsanteile ${row.number}`)}</div>
+                <div class="analysis-pie-legend">
+                  ${row.segments.map((segment) => `
+                    <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                      <div class="analysis-pie-legend-left">
+                        <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                        <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                      </div>
+                      <strong>${segment.value.toFixed(2)}</strong>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `
+        : '';
 
       els.analysisChartsWrap.innerHTML = `
         <div class="analysis-toolbar">
@@ -8712,6 +8765,13 @@
           <summary><span>Jahrgänge Nach Projekten</span><span class="metric-sub">Für jedes Projekt, aus welchen Jahrgängen die Wahlen kommen</span></summary>
           <div class="analysis-collapse-body">
             ${yearChoiceByProjectCharts || '<div class="analysis-note">Noch keine Projektwahl-Verteilungen nach Jahrgängen verfügbar.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Theoretische Jahrgangsanteile Nach Projekt</span><span class="metric-sub">Gleichmäßige Verteilung jedes Jahrgangs auf alle für ihn wählbaren Projekte</span></summary>
+          <div class="analysis-collapse-body">
+            ${theoreticalYearShareByProjectCharts || '<div class="analysis-note">Noch keine theoretischen Jahrgangsanteile verfügbar.</div>'}
           </div>
         </details>
 
