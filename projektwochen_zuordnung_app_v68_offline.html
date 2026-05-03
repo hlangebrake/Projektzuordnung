@@ -1398,6 +1398,21 @@
       font-weight: 700;
       text-align: left;
     }
+    .analysis-project-year-header {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .analysis-project-year-header strong {
+      color: #162033;
+      font-size: 12px;
+    }
+    .analysis-project-year-header span {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      line-height: 1.25;
+    }
     .analysis-project-year-project {
       font-weight: 600;
       color: #162033;
@@ -1426,6 +1441,61 @@
       overflow: hidden;
       text-overflow: ellipsis;
       padding: 0 4px;
+    }
+    .analysis-pie-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .analysis-pie-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fbfdff;
+    }
+    .analysis-pie-title {
+      margin: 0 0 2px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #162033;
+    }
+    .analysis-pie-subtitle {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .analysis-pie-visual {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .analysis-pie-svg {
+      width: 152px;
+      height: 152px;
+      display: block;
+    }
+    .analysis-pie-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .analysis-pie-legend-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .analysis-pie-legend-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .analysis-pie-legend-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .analysis-rank-row {
       display: grid;
@@ -7606,6 +7676,68 @@
       return `hsl(${hue} 68% 58%)`;
     }
 
+    function getAnalysisProjectColor(project, index = 0) {
+      const base = Number.isFinite(Number(project?.number)) ? Number(project.number) : index + 1;
+      const hue = (base * 53) % 360;
+      return `hsl(${hue} 64% 56%)`;
+    }
+
+    function polarToCartesian(cx, cy, radius, angleDeg) {
+      const radians = (angleDeg - 90) * Math.PI / 180;
+      return {
+        x: cx + (radius * Math.cos(radians)),
+        y: cy + (radius * Math.sin(radians))
+      };
+    }
+
+    function buildPieSegmentPath(cx, cy, radius, startAngle, endAngle) {
+      const span = endAngle - startAngle;
+      if (span >= 359.999) {
+        return [
+          `M ${cx} ${cy}`,
+          `m 0 ${-radius}`,
+          `a ${radius} ${radius} 0 1 1 0 ${radius * 2}`,
+          `a ${radius} ${radius} 0 1 1 0 ${-radius * 2}`,
+          'Z'
+        ].join(' ');
+      }
+      const start = polarToCartesian(cx, cy, radius, startAngle);
+      const end = polarToCartesian(cx, cy, radius, endAngle);
+      const largeArcFlag = span > 180 ? 1 : 0;
+      return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`;
+    }
+
+    function buildAnalysisPieSvg(segments, emptyLabel) {
+      const safeSegments = (segments || []).filter((segment) => Number(segment?.value || 0) > 0);
+      if (!safeSegments.length) {
+        return `
+          <svg class="analysis-pie-svg" viewBox="0 0 160 160" role="img" aria-label="${escapeHtml(emptyLabel || 'Keine Daten')}">
+            <circle cx="80" cy="80" r="60" fill="#e5e7eb"></circle>
+            <text x="80" y="85" text-anchor="middle" font-size="12" fill="#6b7280">0</text>
+          </svg>
+        `;
+      }
+      const total = safeSegments.reduce((sum, segment) => sum + Math.max(0, Number(segment.value || 0)), 0);
+      let cursor = 0;
+      const paths = safeSegments.map((segment) => {
+        const value = Math.max(0, Number(segment.value || 0));
+        const startAngle = total > 0 ? (cursor / total) * 360 : 0;
+        cursor += value;
+        const endAngle = total > 0 ? (cursor / total) * 360 : 0;
+        const title = escapeHtml(segment.title || `${segment.label}: ${value}`);
+        const path = buildPieSegmentPath(80, 80, 60, startAngle, endAngle);
+        return `<path d="${path}" fill="${escapeHtml(segment.color || '#2563eb')}" stroke="#ffffff" stroke-width="1.5"><title>${title}</title></path>`;
+      }).join('');
+      return `
+        <svg class="analysis-pie-svg" viewBox="0 0 160 160" role="img" aria-label="${escapeHtml(emptyLabel || 'Kreisdiagramm')}">
+          ${paths}
+          <circle cx="80" cy="80" r="20" fill="#ffffff"></circle>
+          <text x="80" y="78" text-anchor="middle" font-size="15" font-weight="700" fill="#162033">${total}</text>
+          <text x="80" y="93" text-anchor="middle" font-size="10" fill="#6b7280">gesamt</text>
+        </svg>
+      `;
+    }
+
     function computeDetailedAnalysis(assignments) {
       if (!state.data) return null;
       const byStudent = assignments?.byStudent || [];
@@ -7847,7 +7979,10 @@
           yearRows
         };
       }).sort((a, b) => Number(a.number) - Number(b.number));
-      const projectYearLabels = [...new Set(projectYearDistributionRows.flatMap((row) => row.yearRows.map((yearRow) => yearRow.label)))]
+      const projectYearLabels = [...new Set([
+        ...cohortRows.map((row) => row.label),
+        ...projectYearDistributionRows.flatMap((row) => row.yearRows.map((yearRow) => yearRow.label))
+      ])]
         .sort((a, b) => {
           const ay = parseYearGroup(a);
           const by = parseYearGroup(b);
@@ -7860,6 +7995,82 @@
           yearTotals.set(yearRow.label, (yearTotals.get(yearRow.label) || 0) + yearRow.count);
         });
       });
+      const projectYearMeta = new Map();
+      projectYearLabels.forEach((label) => {
+        const rawYear = String(label || '').replace(/^Jg\.\s*/i, '').trim();
+        const studentCount = yearTotals.get(label) || 0;
+        const eligibleProjectCount = (state.data.projects || []).filter((project) => projectAllowsStudentYear(project, rawYear)).length;
+        projectYearMeta.set(label, {
+          studentCount,
+          eligibleProjectCount
+        });
+      });
+
+      const projectChoiceByYearRows = cohortRows.map((cohortRow, cohortIndex) => {
+        const rawYear = String(cohortRow.label || '').replace(/^Jg\.\s*/i, '').trim();
+        const counts = new Map();
+        visibleStudents.forEach((student) => {
+          const studentYear = state.data.yearMap?.get(student.id);
+          const studentLabel = (studentYear === undefined || studentYear === null || String(studentYear).trim() === '') ? 'ohne Jahrgang' : `Jg. ${studentYear}`;
+          if (studentLabel !== cohortRow.label) return;
+          (state.data.choiceMap?.get(student.id) || new Set()).forEach((projectId) => {
+            counts.set(projectId, (counts.get(projectId) || 0) + 1);
+          });
+        });
+        const segments = state.data.projects
+          .map((project, idx) => {
+            const value = counts.get(project.id) || 0;
+            return value > 0 ? {
+              key: project.id,
+              value,
+              color: getAnalysisProjectColor(project, idx),
+              label: `#${getProjectDisplayNumber(project, idx)} ${project.name}`,
+              title: `#${getProjectDisplayNumber(project, idx)} ${project.name}: ${value} Wahlen`
+            } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'de', { numeric: true, sensitivity: 'base' }));
+        return {
+          yearLabel: cohortRow.label,
+          yearValue: cohortRow.yearValue,
+          studentCount: cohortRow.size,
+          eligibleProjectCount: (state.data.projects || []).filter((project) => projectAllowsStudentYear(project, rawYear)).length,
+          totalChoices: segments.reduce((sum, segment) => sum + segment.value, 0),
+          segments
+        };
+      }).filter((row) => row.totalChoices > 0);
+
+      const yearChoiceByProjectRows = state.data.projects.map((project, idx) => {
+        const counts = new Map();
+        visibleStudents.forEach((student) => {
+          const choices = state.data.choiceMap?.get(student.id) || new Set();
+          if (!choices.has(project.id)) return;
+          const studentYear = state.data.yearMap?.get(student.id);
+          const yearLabel = (studentYear === undefined || studentYear === null || String(studentYear).trim() === '') ? 'ohne Jahrgang' : `Jg. ${studentYear}`;
+          counts.set(yearLabel, (counts.get(yearLabel) || 0) + 1);
+        });
+        const segments = projectYearLabels
+          .map((label, yearIndex) => {
+            const value = counts.get(label) || 0;
+            return value > 0 ? {
+              key: label,
+              value,
+              color: getAnalysisYearColor(label, yearIndex),
+              label,
+              title: `${label}: ${value} Wahlen für #${getProjectDisplayNumber(project, idx)} ${project.name}`
+            } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => parseYearGroup(a.label) - parseYearGroup(b.label) || a.label.localeCompare(b.label, 'de', { numeric: true, sensitivity: 'base' }));
+        return {
+          projectId: project.id,
+          number: getProjectDisplayNumber(project, idx),
+          name: project.name,
+          totalChoices: segments.reduce((sum, segment) => sum + segment.value, 0),
+          segments
+        };
+      }).filter((row) => row.totalChoices > 0)
+        .sort((a, b) => Number(a.number) - Number(b.number));
 
       return {
         projectStats,
@@ -7872,6 +8083,9 @@
         projectYearDistributionRows,
         projectYearLabels,
         projectYearTotals: yearTotals,
+        projectYearMeta,
+        projectChoiceByYearRows,
+        yearChoiceByProjectRows,
         projectStatusCounts
       };
     }
@@ -8234,7 +8448,18 @@
             <thead>
               <tr>
                 <th>Projekt</th>
-                ${(details?.projectYearLabels || []).map((label) => `<th>${escapeHtml(label)}</th>`).join('')}
+                ${(details?.projectYearLabels || []).map((label) => {
+                  const meta = details?.projectYearMeta?.get(label) || { studentCount: 0, eligibleProjectCount: 0 };
+                  return `
+                    <th>
+                      <div class="analysis-project-year-header">
+                        <strong>${escapeHtml(label)}</strong>
+                        <span>${meta.studentCount} Schüler</span>
+                        <span>${meta.eligibleProjectCount} Projekte wählbar</span>
+                      </div>
+                    </th>
+                  `;
+                }).join('')}
               </tr>
             </thead>
             <tbody>
@@ -8262,6 +8487,54 @@
               }).join('')}
             </tbody>
           </table>
+        `
+        : '';
+      const projectChoiceByYearCharts = (details?.projectChoiceByYearRows || []).length
+        ? `
+          <div class="analysis-pie-grid">
+            ${(details?.projectChoiceByYearRows || []).map((row) => `
+              <div class="analysis-pie-card">
+                <h4 class="analysis-pie-title">${escapeHtml(row.yearLabel)}</h4>
+                <div class="analysis-pie-subtitle">${row.studentCount} Schüler · ${row.eligibleProjectCount} Projekte wählbar · ${row.totalChoices} Gesamtwahlen</div>
+                <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.segments, `Projektwahlen ${row.yearLabel}`)}</div>
+                <div class="analysis-pie-legend">
+                  ${row.segments.map((segment) => `
+                    <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                      <div class="analysis-pie-legend-left">
+                        <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                        <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                      </div>
+                      <strong>${segment.value}</strong>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `
+        : '';
+      const yearChoiceByProjectCharts = (details?.yearChoiceByProjectRows || []).length
+        ? `
+          <div class="analysis-pie-grid">
+            ${(details?.yearChoiceByProjectRows || []).map((row) => `
+              <div class="analysis-pie-card">
+                <h4 class="analysis-pie-title">#${escapeHtml(String(row.number))} ${escapeHtml(row.name)}</h4>
+                <div class="analysis-pie-subtitle">${row.totalChoices} Gesamtwahlen</div>
+                <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.segments, `Jahrgänge für Projekt ${row.number}`)}</div>
+                <div class="analysis-pie-legend">
+                  ${row.segments.map((segment) => `
+                    <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                      <div class="analysis-pie-legend-left">
+                        <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                        <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                      </div>
+                      <strong>${segment.value}</strong>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
         `
         : '';
 
@@ -8422,9 +8695,23 @@
         </details>
 
         <details class="analysis-collapse" open>
-          <summary><span>Jahrgangsverteilung Pro Projekt</span><span class="metric-sub">Balkendiagramm der Jahrgänge innerhalb jedes Projekts</span></summary>
+          <summary><span>Jahrgangsverteilung Pro Projekt</span><span class="metric-sub">Tabelle der Projektbelegung mit jahrgangsbezogen skalierten Anteilen</span></summary>
           <div class="analysis-collapse-body">
             ${projectYearDistributionTable || '<div class="analysis-note">Noch keine Projektverteilung nach Jahrgängen verfügbar.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Projektwahlen Nach Jahrgang</span><span class="metric-sub">Für jeden Jahrgang, welche Projekte wie oft gewählt wurden</span></summary>
+          <div class="analysis-collapse-body">
+            ${projectChoiceByYearCharts || '<div class="analysis-note">Noch keine Wahlverteilungen nach Jahrgängen verfügbar.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
+          <summary><span>Jahrgänge Nach Projekten</span><span class="metric-sub">Für jedes Projekt, aus welchen Jahrgängen die Wahlen kommen</span></summary>
+          <div class="analysis-collapse-body">
+            ${yearChoiceByProjectCharts || '<div class="analysis-note">Noch keine Projektwahl-Verteilungen nach Jahrgängen verfügbar.</div>'}
           </div>
         </details>
 
