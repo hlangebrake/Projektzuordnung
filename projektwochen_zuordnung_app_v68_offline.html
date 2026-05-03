@@ -1224,6 +1224,9 @@
       .chart-row {
         grid-template-columns: 1fr;
       }
+      .project-comparison-grid {
+        grid-template-columns: 1fr;
+      }
     }
     @media print {
       @page {
@@ -1497,6 +1500,54 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .project-comparison-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .project-comparison-row {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .project-comparison-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbff;
+    }
+    .project-comparison-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+      color: #162033;
+    }
+    .project-comparison-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .project-comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 16px;
+    }
+    .project-comparison-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fbfdff;
+    }
+    .project-comparison-card h4 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      color: #162033;
+    }
+    .project-comparison-card .metric-sub {
+      display: block;
+      margin-bottom: 10px;
+    }
     .analysis-rank-row {
       display: grid;
       grid-template-columns: minmax(130px, 240px) minmax(0, 1fr) minmax(76px, auto);
@@ -1648,6 +1699,10 @@
         <button class="nav-tab" type="button" data-target="tabAnalysis">
           <span class="nav-icon">📊</span>
           <span class="nav-label">Analyse</span>
+        </button>
+        <button class="nav-tab" type="button" data-target="tabProjectComparisonAnalysis">
+          <span class="nav-icon">🧭</span>
+          <span class="nav-label">Projektvergleich</span>
         </button>
       </nav>
 
@@ -1977,6 +2032,24 @@
           <section class="panel">
             <h3>Stufenprotokoll</h3>
             <div id="stageLog" class="table-wrap"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tabProjectComparisonAnalysis" class="tab-panel">
+        <div class="tab-header">
+          <div>
+            <h2>Projektzuordnung Aktuell vs Wahl vs Theoretische Verteilung</h2>
+            <p class="muted">Vergleicht pro Projekt die aktuelle Jahrgangsverteilung, die Verteilung nach Wahlen und die theoretische Gleichverteilung direkt nebeneinander.</p>
+          </div>
+          <div class="button-row">
+            <button id="exportProjectComparisonPdfBtn" class="ghost" disabled>Export als PDF</button>
+          </div>
+        </div>
+
+        <div class="panel-grid">
+          <section class="panel panel-span-2">
+            <div id="projectComparisonAnalysisWrap"></div>
           </section>
         </div>
       </section>
@@ -3360,6 +3433,7 @@
       if (els.zipClassListPdfsBtn) els.zipClassListPdfsBtn.disabled = !hasSolution;
       if (els.exportStudentListExcelBtn) els.exportStudentListExcelBtn.disabled = !hasSolution;
       if (els.printStudentListBtn) els.printStudentListBtn.disabled = !hasSolution;
+      if (els.exportProjectComparisonPdfBtn) els.exportProjectComparisonPdfBtn.disabled = !hasSolution;
     }
 
     function renderLiveLog() {
@@ -7738,6 +7812,138 @@
       `;
     }
 
+    function buildProjectComparisonRows(details) {
+      if (!state.data || !details) return [];
+      const actualMap = new Map((details.projectYearDistributionRows || []).map((row) => [row.projectId, row]));
+      const choiceMap = new Map((details.yearChoiceByProjectRows || []).map((row) => [row.projectId, row]));
+      const theoreticalMap = new Map((details.theoreticalYearShareByProjectRows || []).map((row) => [row.projectId, row]));
+      return sortProjectsByNumber(state.data.projects).map((project) => {
+        const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
+        const actualRow = actualMap.get(project.id) || { total: 0, yearRows: [] };
+        const choiceRow = choiceMap.get(project.id) || { totalChoices: 0, segments: [] };
+        const theoreticalRow = theoreticalMap.get(project.id) || { totalShare: 0, segments: [] };
+        const actualSegments = (actualRow.yearRows || []).map((segment) => ({
+          key: segment.label,
+          value: segment.count,
+          color: segment.color,
+          label: segment.label,
+          title: `${segment.label}: ${segment.count} Schüler aktuell in #${getProjectDisplayNumber(project, idx)} ${project.name}`
+        }));
+        return {
+          projectId: project.id,
+          number: getProjectDisplayNumber(project, idx),
+          name: project.name,
+          capacity: Number(project.capacity || 0),
+          minFill: Number(project.minFill || 0),
+          actual: {
+            total: Number(actualRow.total || 0),
+            segments: actualSegments
+          },
+          choice: {
+            total: Number(choiceRow.totalChoices || 0),
+            segments: choiceRow.segments || []
+          },
+          theoretical: {
+            total: Number(theoreticalRow.totalShare || 0),
+            segments: theoreticalRow.segments || []
+          }
+        };
+      });
+    }
+
+    function buildCapacityAwareTheoreticalYearShareRows(data, projectYearLabels, projectYearMeta) {
+      const projects = data?.projects || [];
+      const projectIndexById = new Map(projects.map((project, idx) => [project.id, idx]));
+      const remainingCapacity = new Map(projects.map((project) => [project.id, Math.max(0, Number(project.capacity || 0))]));
+      const projectYearShareMaps = new Map(projects.map((project) => [project.id, new Map()]));
+      const yearStates = (projectYearLabels || []).map((label) => {
+        const meta = projectYearMeta?.get(label) || { studentCount: 0 };
+        const rawYear = String(label || '').replace(/^Jg\.\s*/i, '').trim();
+        const eligibleProjectIds = projects
+          .filter((project) => projectAllowsStudentYear(project, rawYear))
+          .map((project) => project.id);
+        return {
+          label,
+          remaining: Math.max(0, Number(meta.studentCount || 0)),
+          eligibleProjectIds
+        };
+      }).filter((stateRow) => stateRow.remaining > 0 && stateRow.eligibleProjectIds.length);
+
+      const EPS = 1e-6;
+      let guard = 0;
+      while (guard < 500) {
+        guard += 1;
+        const activeYearStates = yearStates
+          .map((stateRow) => ({
+            ...stateRow,
+            activeProjectIds: stateRow.eligibleProjectIds.filter((projectId) => (remainingCapacity.get(projectId) || 0) > EPS)
+          }))
+          .filter((stateRow) => stateRow.remaining > EPS && stateRow.activeProjectIds.length);
+        if (!activeYearStates.length) break;
+
+        const projectDemand = new Map();
+        activeYearStates.forEach((stateRow) => {
+          const share = stateRow.remaining / stateRow.activeProjectIds.length;
+          stateRow.activeProjectIds.forEach((projectId) => {
+            if (!projectDemand.has(projectId)) projectDemand.set(projectId, []);
+            projectDemand.get(projectId).push({
+              label: stateRow.label,
+              amount: share
+            });
+          });
+        });
+
+        let progress = false;
+        projectDemand.forEach((demands, projectId) => {
+          const capacityLeft = remainingCapacity.get(projectId) || 0;
+          if (capacityLeft <= EPS || !demands.length) return;
+          const totalDemand = demands.reduce((sum, demand) => sum + demand.amount, 0);
+          if (totalDemand <= EPS) return;
+          const factor = totalDemand <= capacityLeft ? 1 : (capacityLeft / totalDemand);
+          const assignedTotal = Math.min(capacityLeft, totalDemand);
+          if (assignedTotal <= EPS) return;
+          progress = true;
+          demands.forEach((demand) => {
+            const assigned = demand.amount * factor;
+            if (assigned <= EPS) return;
+            const targetMap = projectYearShareMaps.get(projectId);
+            targetMap.set(demand.label, (targetMap.get(demand.label) || 0) + assigned);
+            const yearState = yearStates.find((entry) => entry.label === demand.label);
+            if (yearState) yearState.remaining = Math.max(0, yearState.remaining - assigned);
+          });
+          remainingCapacity.set(projectId, Math.max(0, capacityLeft - assignedTotal));
+        });
+
+        if (!progress) break;
+      }
+
+      return projects.map((project, idx) => {
+        const yearShareMap = projectYearShareMaps.get(project.id) || new Map();
+        const segments = (projectYearLabels || [])
+          .map((label, yearIndex) => {
+            const value = yearShareMap.get(label) || 0;
+            return value > EPS ? {
+              key: label,
+              value,
+              color: getAnalysisYearColor(label, yearIndex),
+              label,
+              title: `${label}: theoretisch ${value.toFixed(2)} Schüler für #${getProjectDisplayNumber(project, idx)} ${project.name} unter Beachtung der Kapazität`
+            } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => parseYearGroup(a.label) - parseYearGroup(b.label) || a.label.localeCompare(b.label, 'de', { numeric: true, sensitivity: 'base' }));
+        return {
+          projectId: project.id,
+          number: getProjectDisplayNumber(project, idx),
+          name: project.name,
+          totalShare: segments.reduce((sum, segment) => sum + segment.value, 0),
+          remainingCapacity: remainingCapacity.get(project.id) || 0,
+          segments
+        };
+      }).filter((row) => row.totalShare > EPS)
+        .sort((a, b) => Number(a.number) - Number(b.number));
+    }
+
     function computeDetailedAnalysis(assignments) {
       if (!state.data) return null;
       const byStudent = assignments?.byStudent || [];
@@ -7887,6 +8093,33 @@
         if (a.yearValue !== b.yearValue) return a.yearValue - b.yearValue;
         return String(a.label).localeCompare(String(b.label), 'de', { numeric: true, sensitivity: 'base' });
       });
+      const zeroChoiceByYearCounts = new Map();
+      const totalStudentsByYearForZeroChoice = new Map();
+      (state.data.students || []).forEach((student) => {
+        const yearRaw = state.data.yearMap?.get(student.id);
+        const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+        totalStudentsByYearForZeroChoice.set(yearLabel, (totalStudentsByYearForZeroChoice.get(yearLabel) || 0) + 1);
+        const choiceCount = (state.data.choiceMap?.get(student.id) || new Set()).size;
+        if (choiceCount !== 0) return;
+        zeroChoiceByYearCounts.set(yearLabel, (zeroChoiceByYearCounts.get(yearLabel) || 0) + 1);
+      });
+      const zeroChoiceYearLabels = [...new Set([
+        ...cohortRows.map((row) => row.label),
+        ...totalStudentsByYearForZeroChoice.keys()
+      ])].sort((a, b) => {
+        const ay = parseYearGroup(a);
+        const by = parseYearGroup(b);
+        if (ay !== by) return ay - by;
+        return String(a).localeCompare(String(b), 'de', { numeric: true, sensitivity: 'base' });
+      });
+      const zeroChoiceByYearRows = zeroChoiceYearLabels
+        .map((label) => ({
+          label,
+          yearValue: parseYearGroup(label),
+          zeroChoiceCount: zeroChoiceByYearCounts.get(label) || 0,
+          size: totalStudentsByYearForZeroChoice.get(label) || 0
+        }))
+        .filter((row) => row.zeroChoiceCount > 0);
 
       const choiceDistributionRows = [...choiceDistribution.entries()].sort((a, b) => a[0] - b[0]).map(([count, total]) => ({ count, total }));
       const projectStatusCounts = {
@@ -8072,38 +8305,13 @@
       }).filter((row) => row.totalChoices > 0)
         .sort((a, b) => Number(a.number) - Number(b.number));
 
-      const theoreticalYearShareByProjectRows = state.data.projects.map((project, idx) => {
-        const segments = projectYearLabels
-          .map((label, yearIndex) => {
-            const meta = projectYearMeta.get(label) || { studentCount: 0, eligibleProjectCount: 0 };
-            const rawYear = String(label || '').replace(/^Jg\.\s*/i, '').trim();
-            if (!meta.studentCount || !meta.eligibleProjectCount) return null;
-            if (!projectAllowsStudentYear(project, rawYear)) return null;
-            const value = meta.studentCount / meta.eligibleProjectCount;
-            return value > 0 ? {
-              key: label,
-              value,
-              color: getAnalysisYearColor(label, yearIndex),
-              label,
-              title: `${label}: theoretisch ${value.toFixed(2)} Schüler für #${getProjectDisplayNumber(project, idx)} ${project.name}`
-            } : null;
-          })
-          .filter(Boolean)
-          .sort((a, b) => parseYearGroup(a.label) - parseYearGroup(b.label) || a.label.localeCompare(b.label, 'de', { numeric: true, sensitivity: 'base' }));
-        return {
-          projectId: project.id,
-          number: getProjectDisplayNumber(project, idx),
-          name: project.name,
-          totalShare: segments.reduce((sum, segment) => sum + segment.value, 0),
-          segments
-        };
-      }).filter((row) => row.totalShare > 0)
-        .sort((a, b) => Number(a.number) - Number(b.number));
+      const theoreticalYearShareByProjectRows = buildCapacityAwareTheoreticalYearShareRows(state.data, projectYearLabels, projectYearMeta);
 
       return {
         projectStats,
         classRows,
         cohortRows,
+        zeroChoiceByYearRows,
         choiceDistributionRows,
         unassignedStudents,
         outsideWishStudents,
@@ -8222,12 +8430,14 @@
     function renderAnalysis(assignments) {
       if (!els.analysisSummaryWrap || !els.analysisChartsWrap) {
         updateGlobalStatusBar(assignments);
+        renderProjectComparisonAnalysis(assignments);
         return;
       }
       if (!state.data) {
         updateGlobalStatusBar(assignments);
         els.analysisSummaryWrap.innerHTML = '<div class="analysis-note">Noch keine Daten geladen.</div>';
         els.analysisChartsWrap.innerHTML = '<div class="analysis-note">Die Analyse wird verfügbar, sobald Daten geladen wurden.</div>';
+        renderProjectComparisonAnalysis(assignments);
         return;
       }
 
@@ -8450,6 +8660,18 @@
               <div class="analysis-stack-segment analysis-stack-yellow" style="width:${pct.toFixed(1)}%"></div>
             </div>
             <div class="value">${row.total} · ${pct.toFixed(1)}%</div>
+          </div>
+        `;
+      }).join('');
+      const zeroChoiceByYearRows = (details?.zeroChoiceByYearRows || []).map((row) => {
+        const pct = row.size ? Math.max(0, Math.min(100, (row.zeroChoiceCount / row.size) * 100)) : 0;
+        return `
+          <div class="analysis-rank-row">
+            <div class="name">${escapeHtml(row.label)}</div>
+            <div class="analysis-stack-track">
+              <div class="analysis-stack-segment analysis-stack-red" style="width:${pct.toFixed(1)}%"></div>
+            </div>
+            <div class="value">${row.zeroChoiceCount} / ${row.size}</div>
           </div>
         `;
       }).join('');
@@ -8718,6 +8940,11 @@
               </div>
             </div>
             <div class="analysis-block" style="margin-top:16px">
+              <h4>Schüler ohne Wunsch nach Jahrgang</h4>
+              <div class="analysis-row-list">${zeroChoiceByYearRows || '<div class="analysis-note">Aktuell gibt es keine Schüler mit 0 Wünschen.</div>'}</div>
+              <div class="analysis-mini-note">Für jeden Jahrgang wird gezeigt, wie viele Schüler dort mit 0 Wünschen vorkommen.</div>
+            </div>
+            <div class="analysis-block" style="margin-top:16px">
               <h4>Schüler mit ignorierten Wünschen</h4>
               ${details && details.ignoredWishStudents.length ? `
                 <table class="analysis-table-like">
@@ -8797,6 +9024,83 @@
       `;
 
       bindAnalysisControls(assignments);
+      renderProjectComparisonAnalysis(assignments);
+    }
+
+    function renderProjectComparisonAnalysis(assignments) {
+      if (!els.projectComparisonAnalysisWrap) return;
+      if (!state.data) {
+        els.projectComparisonAnalysisWrap.innerHTML = '<div class="analysis-note">Noch keine Daten geladen.</div>';
+        return;
+      }
+      const details = computeDetailedAnalysis(assignments);
+      const rows = buildProjectComparisonRows(details);
+      if (!rows.length) {
+        els.projectComparisonAnalysisWrap.innerHTML = '<div class="analysis-note">Noch keine Projektdaten für den Vergleich verfügbar.</div>';
+        return;
+      }
+      els.projectComparisonAnalysisWrap.innerHTML = `
+        <div class="project-comparison-list">
+          ${rows.map((row) => `
+            <section class="project-comparison-row">
+              <div class="project-comparison-head">
+                <h3 class="project-comparison-title">#${escapeHtml(String(row.number))} ${escapeHtml(row.name)}</h3>
+                <div class="project-comparison-meta">Kapazität ${row.capacity} · Mindestbelegung ${row.minFill} · aktuell ${row.actual.total} zugeordnet</div>
+              </div>
+              <div class="project-comparison-grid">
+                <div class="project-comparison-card">
+                  <h4>Aktuelle Jahrgangsverteilung</h4>
+                  <span class="metric-sub">${row.actual.total} Schüler aktuell im Projekt</span>
+                  <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.actual.segments, `Aktuelle Jahrgangsverteilung Projekt ${row.number}`)}</div>
+                  <div class="analysis-pie-legend">
+                    ${row.actual.segments.length ? row.actual.segments.map((segment) => `
+                      <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                        <div class="analysis-pie-legend-left">
+                          <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                          <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                        </div>
+                        <strong>${segment.value}</strong>
+                      </div>
+                    `).join('') : '<div class="analysis-note">Keine zugeordneten Schüler.</div>'}
+                  </div>
+                </div>
+                <div class="project-comparison-card">
+                  <h4>Jahrgangsverteilung nach Wahl</h4>
+                  <span class="metric-sub">${row.choice.total} Wahlen für dieses Projekt</span>
+                  <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.choice.segments, `Wahlen nach Jahrgang Projekt ${row.number}`)}</div>
+                  <div class="analysis-pie-legend">
+                    ${row.choice.segments.length ? row.choice.segments.map((segment) => `
+                      <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                        <div class="analysis-pie-legend-left">
+                          <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                          <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                        </div>
+                        <strong>${segment.value}</strong>
+                      </div>
+                    `).join('') : '<div class="analysis-note">Keine Wahlen für dieses Projekt.</div>'}
+                  </div>
+                </div>
+                <div class="project-comparison-card">
+                  <h4>Theoretische Jahrgangsverteilung bei Gleichverteilung</h4>
+                  <span class="metric-sub">${row.theoretical.total.toFixed(2)} theoretische Schüler</span>
+                  <div class="analysis-pie-visual">${buildAnalysisPieSvg(row.theoretical.segments, `Theoretische Verteilung Projekt ${row.number}`)}</div>
+                  <div class="analysis-pie-legend">
+                    ${row.theoretical.segments.length ? row.theoretical.segments.map((segment) => `
+                      <div class="analysis-pie-legend-row" title="${escapeHtml(segment.title)}">
+                        <div class="analysis-pie-legend-left">
+                          <span class="analysis-swatch" style="background:${escapeHtml(segment.color)}"></span>
+                          <span class="analysis-pie-legend-label">${escapeHtml(segment.label)}</span>
+                        </div>
+                        <strong>${segment.value.toFixed(2)}</strong>
+                      </div>
+                    `).join('') : '<div class="analysis-note">Keine theoretische Verteilung verfügbar.</div>'}
+                  </div>
+                </div>
+              </div>
+            </section>
+          `).join('')}
+        </div>
+      `;
     }
 
     function activeHardRuleLabels() {
@@ -9316,6 +9620,177 @@
         y -= rowHeight;
       });
       return pdfDoc.save();
+    }
+
+    function parseHslColorToRgb01(hslValue) {
+      const match = String(hslValue || '').match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
+      if (!match) return { r: 0.2, g: 0.4, b: 0.9 };
+      let h = (Number(match[1]) % 360 + 360) % 360;
+      let s = Math.max(0, Math.min(1, Number(match[2]) / 100));
+      let l = Math.max(0, Math.min(1, Number(match[3]) / 100));
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = l - c / 2;
+      let r1 = 0;
+      let g1 = 0;
+      let b1 = 0;
+      if (h < 60) [r1, g1, b1] = [c, x, 0];
+      else if (h < 120) [r1, g1, b1] = [x, c, 0];
+      else if (h < 180) [r1, g1, b1] = [0, c, x];
+      else if (h < 240) [r1, g1, b1] = [0, x, c];
+      else if (h < 300) [r1, g1, b1] = [x, 0, c];
+      else [r1, g1, b1] = [c, 0, x];
+      return { r: r1 + m, g: g1 + m, b: b1 + m };
+    }
+
+    function pdfRgbFromCssColor(PDFLib, colorValue) {
+      const { rgb } = PDFLib;
+      const parsed = parseHslColorToRgb01(colorValue);
+      return rgb(parsed.r, parsed.g, parsed.b);
+    }
+
+    function drawPdfPieChart(page, PDFLib, centerX, centerY, radius, segments) {
+      const safeSegments = (segments || []).filter((segment) => Number(segment?.value || 0) > 0);
+      const total = safeSegments.reduce((sum, segment) => sum + Number(segment.value || 0), 0);
+      if (!total) {
+        page.drawCircle({ x: centerX, y: centerY, size: radius, color: PDFLib.rgb(0.9, 0.91, 0.93) });
+        return;
+      }
+      let cursor = 0;
+      safeSegments.forEach((segment) => {
+        const startAngle = (cursor / total) * 360;
+        cursor += Number(segment.value || 0);
+        const endAngle = (cursor / total) * 360;
+        page.drawSvgPath(buildPieSegmentPath(centerX, centerY, radius, startAngle, endAngle), {
+          color: pdfRgbFromCssColor(PDFLib, segment.color),
+          borderColor: PDFLib.rgb(1, 1, 1),
+          borderWidth: 0.8
+        });
+      });
+      page.drawCircle({ x: centerX, y: centerY, size: radius * 0.33, color: PDFLib.rgb(1, 1, 1) });
+    }
+
+    async function exportProjectComparisonPdf() {
+      if (!state.solution?.assignments || !state.data) return;
+      try {
+        const PDFLib = ensurePdfExportLibraries().PDFLib;
+        const { PDFDocument, StandardFonts, rgb } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const rows = buildProjectComparisonRows(computeDetailedAnalysis(state.resultViewAssignments || state.solution.assignments));
+        if (!rows.length) {
+          alert('Keine Daten für diesen PDF-Export vorhanden.');
+          return;
+        }
+        const pageWidth = 841.89;
+        const pageHeight = 595.28;
+        const margin = 32;
+        rows.forEach((row, rowIndex) => {
+          const page = pdfDoc.addPage([pageWidth, pageHeight]);
+          page.drawText(fitTextToWidth(bold, `Projekt #${row.number} - ${row.name}`, 18, pageWidth - margin * 2), {
+            x: margin,
+            y: pageHeight - margin,
+            size: 18,
+            font: bold,
+            color: rgb(0.11, 0.16, 0.22)
+          });
+          page.drawText(`Kapazität ${row.capacity} · Mindestbelegung ${row.minFill} · Seite ${rowIndex + 1}/${rows.length}`, {
+            x: margin,
+            y: pageHeight - margin - 22,
+            size: 10,
+            font,
+            color: rgb(0.42, 0.46, 0.52)
+          });
+          const cards = [
+            { title: 'Aktuelle Jahrgangsverteilung', subtitle: `${row.actual.total} Schüler aktuell im Projekt`, segments: row.actual.segments, formatter: (value) => String(value) },
+            { title: 'Jahrgangsverteilung nach Wahl', subtitle: `${row.choice.total} Wahlen für dieses Projekt`, segments: row.choice.segments, formatter: (value) => String(value) },
+            { title: 'Theoretische Jahrgangsverteilung bei Gleichverteilung', subtitle: `${row.theoretical.total.toFixed(2)} theoretische Schüler`, segments: row.theoretical.segments, formatter: (value) => Number(value).toFixed(2) }
+          ];
+          const cardGap = 18;
+          const cardWidth = (pageWidth - margin * 2 - cardGap * 2) / 3;
+          const cardTop = pageHeight - margin - 58;
+          const pieRadius = 52;
+          cards.forEach((card, index) => {
+            const x = margin + index * (cardWidth + cardGap);
+            const y = cardTop - 360;
+            page.drawRectangle({
+              x,
+              y,
+              width: cardWidth,
+              height: 340,
+              borderColor: rgb(0.85, 0.89, 0.94),
+              borderWidth: 1,
+              color: rgb(0.985, 0.992, 1)
+            });
+            page.drawText(fitTextToWidth(bold, card.title, 11, cardWidth - 20), {
+              x: x + 10,
+              y: cardTop - 18,
+              size: 11,
+              font: bold,
+              color: rgb(0.11, 0.16, 0.22)
+            });
+            page.drawText(fitTextToWidth(font, card.subtitle, 9, cardWidth - 20), {
+              x: x + 10,
+              y: cardTop - 34,
+              size: 9,
+              font,
+              color: rgb(0.42, 0.46, 0.52)
+            });
+            drawPdfPieChart(page, PDFLib, x + cardWidth / 2, cardTop - 108, pieRadius, card.segments);
+            const totalValue = card.title.startsWith('Theoretische') ? card.segments.reduce((sum, seg) => sum + Number(seg.value || 0), 0).toFixed(2) : String(card.segments.reduce((sum, seg) => sum + Number(seg.value || 0), 0));
+            page.drawText(totalValue, {
+              x: x + cardWidth / 2 - bold.widthOfTextAtSize(totalValue, 11) / 2,
+              y: cardTop - 112,
+              size: 11,
+              font: bold,
+              color: rgb(0.11, 0.16, 0.22)
+            });
+            let legendY = cardTop - 186;
+            const legendSegments = card.segments.slice(0, 10);
+            legendSegments.forEach((segment) => {
+              page.drawRectangle({
+                x: x + 10,
+                y: legendY - 2,
+                width: 8,
+                height: 8,
+                color: pdfRgbFromCssColor(PDFLib, segment.color)
+              });
+              const labelText = fitTextToWidth(font, segment.label, 8.5, cardWidth - 62);
+              page.drawText(labelText, {
+                x: x + 24,
+                y: legendY - 1,
+                size: 8.5,
+                font,
+                color: rgb(0.15, 0.19, 0.25)
+              });
+              const valueText = card.formatter(segment.value);
+              page.drawText(valueText, {
+                x: x + cardWidth - 10 - bold.widthOfTextAtSize(valueText, 8.5),
+                y: legendY - 1,
+                size: 8.5,
+                font: bold,
+                color: rgb(0.15, 0.19, 0.25)
+              });
+              legendY -= 14;
+            });
+            if (!legendSegments.length) {
+              page.drawText('Keine Daten vorhanden.', {
+                x: x + 10,
+                y: legendY,
+                size: 9,
+                font,
+                color: rgb(0.42, 0.46, 0.52)
+              });
+            }
+          });
+        });
+        const bytes = await pdfDoc.save();
+        triggerBlobDownload(new Blob([bytes], { type: 'application/pdf' }), 'projektvergleich_aktuell_wahl_theoretisch.pdf');
+      } catch (err) {
+        console.error('Fehler beim Export des Projektvergleichs-PDF', err);
+        alert(`Der PDF-Export ist fehlgeschlagen: ${err.message || String(err)}`);
+      }
     }
 
     function getNamedExportSections(kind) {
@@ -10342,6 +10817,7 @@
       if (els.zipClassListPdfsBtn) els.zipClassListPdfsBtn.addEventListener('click', () => zipNamedSectionPdfs('classLists'));
       if (els.exportStudentListExcelBtn) els.exportStudentListExcelBtn.addEventListener('click', exportStudentListWorkbook);
       if (els.printStudentListBtn) els.printStudentListBtn.addEventListener('click', () => printNamedReport('studentList'));
+      if (els.exportProjectComparisonPdfBtn) els.exportProjectComparisonPdfBtn.addEventListener('click', exportProjectComparisonPdf);
       if (els.projectResultsWrap) {
         els.projectResultsWrap.addEventListener('mousedown', (event) => {
           if (event.button !== 0) return;
