@@ -1148,10 +1148,11 @@
       border-radius: 10px;
       background: #fafcff;
       padding: 8px;
-      min-height: 70px;
+      min-height: 0;
+      height: auto;
+      align-self: start;
     }
     .student-chip.compact {
-      min-height: 0;
       padding: 7px 8px;
     }
     .student-chip.outside-choice {
@@ -1737,6 +1738,77 @@
       font-size: 12px;
       font-weight: 700;
       background: #f8fbff;
+    }
+    .analysis-class-project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .analysis-class-project-box {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+      overflow: hidden;
+    }
+    .analysis-class-project-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+      padding: 8px 10px;
+      background: #f8fbff;
+      border-bottom: 1px solid var(--line);
+    }
+    .analysis-class-project-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #162033;
+    }
+    .analysis-class-project-meta {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .analysis-class-project-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .analysis-class-project-table td {
+      width: 20%;
+      padding: 4px 6px;
+      border-right: 1px solid rgba(148, 163, 184, 0.18);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      font-size: 12px;
+      line-height: 1.25;
+      color: #162033;
+      vertical-align: top;
+    }
+    .analysis-class-project-table tr:last-child td {
+      border-bottom: 0;
+    }
+    .analysis-class-project-table td:last-child {
+      border-right: 0;
+    }
+    .analysis-class-project-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-height: 28px;
+    }
+    .analysis-class-project-student {
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .analysis-class-project-project {
+      font-size: 10px;
+      color: rgba(15, 23, 42, 0.7);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .analysis-class-project-empty {
+      background: #ffffff;
     }
     .analysis-tag-list {
       display: flex;
@@ -4152,9 +4224,18 @@
         });
       });
 
-      const latestByStudentId = new Map();
-      resolvedEntries.forEach((entry) => latestByStudentId.set(entry.studentId, entry));
-      const validEntries = [...latestByStudentId.values()].sort((a, b) => a.rowIndex - b.rowIndex);
+      const entriesByStudentId = new Map();
+      resolvedEntries.forEach((entry) => {
+        if (!entriesByStudentId.has(entry.studentId)) entriesByStudentId.set(entry.studentId, []);
+        entriesByStudentId.get(entry.studentId).push(entry);
+      });
+      const validEntries = [...entriesByStudentId.values()].map((entries) => {
+        const garnichtEntries = entries.filter((entry) => entry.specialKind === 'garnicht');
+        if (garnichtEntries.length) {
+          return garnichtEntries.sort((a, b) => b.rowIndex - a.rowIndex)[0];
+        }
+        return entries.sort((a, b) => b.rowIndex - a.rowIndex)[0];
+      }).sort((a, b) => a.rowIndex - b.rowIndex);
       const excludedEntries = validEntries.filter((entry) => entry.specialKind === 'garnicht');
       const unconditionalBeforeEntries = validEntries.filter((entry) => entry.specialKind === 'vorher');
       const conditionalBeforeCandidates = validEntries.filter((entry) => entry.specialKind === 'falls gewunscht');
@@ -4366,6 +4447,7 @@
 
     function mergeAssignmentsWithSpecialCases(baseAssignmentMap, data = state.data, resolvedSpecial = buildResolvedSpecialImport(data), hardIgnoredPreassignments = buildHardIgnoredWishPreassignments(data, readUiConfig(), resolvedSpecial)) {
       const merged = new Map(baseAssignmentMap || []);
+      (resolvedSpecial?.excludedStudentIds || new Set()).forEach((studentId) => merged.delete(studentId));
       (resolvedSpecial?.beforeAssignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
       (hardIgnoredPreassignments?.assignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
       (resolvedSpecial?.afterAssignedMap || new Map()).forEach((projectId, studentId) => merged.set(studentId, projectId));
@@ -7426,7 +7508,8 @@
       if (!state.data || !targetProjectId) return false;
       const current = getEditableAssignments();
       if (!current?.byStudent?.length) return false;
-      const ids = [...new Set((studentIds || []).filter(Boolean))];
+      const excludedIds = getExcludedStudentIds(state.data, state.specialImport);
+      const ids = [...new Set((studentIds || []).filter((studentId) => studentId && !excludedIds.has(studentId)))];
       if (!ids.length) return false;
       const map = structuredAssignmentsToMap(current);
       let changed = false;
@@ -7662,6 +7745,12 @@
         firstName: parts[0],
         lastName: parts.slice(1).join(' ')
       };
+    }
+
+    function formatStudentCompactName(fullName) {
+      const parts = splitStudentNameParts(fullName);
+      if (!parts.lastName) return parts.firstName || String(fullName || '').trim();
+      return `${parts.firstName} ${parts.lastName.charAt(0)}.`;
     }
 
     function compareResultSearchRows(a, b) {
@@ -8279,6 +8368,13 @@
       return `hsl(${hue} 68% 58%)`;
     }
 
+    function getAnalysisProjectSoftColor(project, index = 0) {
+      const numeric = Number(project?.number);
+      const base = Number.isFinite(numeric) ? numeric : index + 1;
+      const hue = (base * 31) % 360;
+      return `hsl(${hue} 55% 88%)`;
+    }
+
     function getAnalysisProjectColor(project, index = 0) {
       const base = Number.isFinite(Number(project?.number)) ? Number(project.number) : index + 1;
       const hue = (base * 53) % 360;
@@ -8768,6 +8864,40 @@
         });
       });
 
+      const classProjectGroupRows = classRows.map((classRow) => {
+        const students = visibleStudents
+          .filter((student) => getStudentDisplayClass(student.id) === classRow.className)
+          .map((student) => {
+            const projectId = assignmentMap.get(student.id) || '';
+            const projectEntry = projectId ? projectMap.get(projectId) : null;
+            const project = projectEntry?.project || null;
+            const projectIndex = projectEntry?.idx || 0;
+            const nameParts = splitStudentNameParts(student.name);
+            return {
+              studentId: student.id,
+              compactName: formatStudentCompactName(student.name),
+              lastName: nameParts.lastName || nameParts.firstName || student.name,
+              fullName: student.name,
+              projectId,
+              projectNumber: project ? Number(getProjectDisplayNumber(project, projectIndex)) : Number.POSITIVE_INFINITY,
+              projectLabel: project ? `#${getProjectDisplayNumber(project, projectIndex)}` : '—',
+              bgColor: project ? getAnalysisProjectSoftColor(project, projectIndex) : '#ffffff'
+            };
+          })
+          .sort((a, b) => {
+            if (a.projectNumber !== b.projectNumber) return a.projectNumber - b.projectNumber;
+            const lastNameDiff = String(a.lastName).localeCompare(String(b.lastName), 'de', { numeric: true, sensitivity: 'base' });
+            if (lastNameDiff !== 0) return lastNameDiff;
+            return String(a.fullName).localeCompare(String(b.fullName), 'de', { numeric: true, sensitivity: 'base' });
+          });
+        return {
+          className: classRow.className,
+          yearLabel: classRow.yearLabel,
+          size: students.length,
+          students
+        };
+      });
+
       const projectChoiceByYearRows = cohortRows.map((cohortRow, cohortIndex) => {
         const rawYear = String(cohortRow.label || '').replace(/^Jg\.\s*/i, '').trim();
         const counts = new Map();
@@ -8849,6 +8979,7 @@
         projectYearLabels,
         projectYearTotals: yearTotals,
         projectYearMeta,
+        classProjectGroupRows,
         projectChoiceByYearRows,
         yearChoiceByProjectRows,
         theoreticalYearShareByProjectRows,
@@ -9222,6 +9353,40 @@
           <td>${escapeHtml(row.reason || '—')}</td>
         </tr>
       `).join('');
+      const classProjectGroups = (details?.classProjectGroupRows || []).length
+        ? `
+          <div class="analysis-class-project-grid">
+            ${(details?.classProjectGroupRows || []).map((row) => {
+              const cells = row.students.map((student) => `
+                <td style="background:${escapeHtml(student.bgColor)}" title="${escapeHtml(`${student.fullName} · ${student.projectLabel}`)}">
+                  <div class="analysis-class-project-cell">
+                    <div class="analysis-class-project-student">${escapeHtml(student.compactName)}</div>
+                    <div class="analysis-class-project-project">${escapeHtml(student.projectLabel)}</div>
+                  </div>
+                </td>
+              `);
+              while (cells.length % 5 !== 0) {
+                cells.push('<td class="analysis-class-project-empty"></td>');
+              }
+              const rows = [];
+              for (let index = 0; index < cells.length; index += 5) {
+                rows.push(`<tr>${cells.slice(index, index + 5).join('')}</tr>`);
+              }
+              return `
+                <section class="analysis-class-project-box">
+                  <div class="analysis-class-project-head">
+                    <div class="analysis-class-project-title">${escapeHtml(row.className)}</div>
+                    <div class="analysis-class-project-meta">${escapeHtml(row.yearLabel)} · ${row.size} Schüler</div>
+                  </div>
+                  <table class="analysis-class-project-table">
+                    <tbody>${rows.join('')}</tbody>
+                  </table>
+                </section>
+              `;
+            }).join('')}
+          </div>
+        `
+        : '';
       const projectYearDistributionTable = (details?.projectYearDistributionRows || []).length
         ? `
           <table class="analysis-project-year-table">
@@ -9504,30 +9669,16 @@
         </details>
 
         <details class="analysis-collapse" open>
+          <summary><span>Projektgruppen in Klassen</span><span class="metric-sub">Jede Klasse kompakt nach Projektnummer und Nachname gruppiert</span></summary>
+          <div class="analysis-collapse-body">
+            ${classProjectGroups || '<div class="analysis-note">Noch keine Klassen-Zuordnungen verfügbar.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse" open>
           <summary><span>Jahrgangsverteilung Pro Projekt</span><span class="metric-sub">Tabelle der Projektbelegung mit jahrgangsbezogen skalierten Anteilen</span></summary>
           <div class="analysis-collapse-body">
             ${projectYearDistributionTable || '<div class="analysis-note">Noch keine Projektverteilung nach Jahrgängen verfügbar.</div>'}
-          </div>
-        </details>
-
-        <details class="analysis-collapse" open>
-          <summary><span>Projektwahlen Nach Jahrgang</span><span class="metric-sub">Für jeden Jahrgang, welche Projekte wie oft gewählt wurden</span></summary>
-          <div class="analysis-collapse-body">
-            ${projectChoiceByYearCharts || '<div class="analysis-note">Noch keine Wahlverteilungen nach Jahrgängen verfügbar.</div>'}
-          </div>
-        </details>
-
-        <details class="analysis-collapse" open>
-          <summary><span>Jahrgänge Nach Projekten</span><span class="metric-sub">Für jedes Projekt, aus welchen Jahrgängen die Wahlen kommen</span></summary>
-          <div class="analysis-collapse-body">
-            ${yearChoiceByProjectCharts || '<div class="analysis-note">Noch keine Projektwahl-Verteilungen nach Jahrgängen verfügbar.</div>'}
-          </div>
-        </details>
-
-        <details class="analysis-collapse" open>
-          <summary><span>Theoretische Jahrgangsanteile Nach Projekt</span><span class="metric-sub">Gleichmäßige Verteilung jedes Jahrgangs auf alle für ihn wählbaren Projekte</span></summary>
-          <div class="analysis-collapse-body">
-            ${theoreticalYearShareByProjectCharts || '<div class="analysis-note">Noch keine theoretischen Jahrgangsanteile verfügbar.</div>'}
           </div>
         </details>
 
