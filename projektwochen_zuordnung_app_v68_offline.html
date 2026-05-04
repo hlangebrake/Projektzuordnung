@@ -871,6 +871,81 @@
       grid-template-columns: repeat(10, minmax(0, 1fr));
       gap: 10px;
     }
+    .project-results-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .project-results-top.with-search {
+      grid-template-columns: minmax(0, 1fr) 360px;
+    }
+    .result-search-panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+      position: sticky;
+      top: 12px;
+    }
+    .result-search-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .result-search-title {
+      margin: 0;
+      font-size: 15px;
+      color: #162033;
+    }
+    .result-search-input-wrap {
+      position: relative;
+    }
+    .result-search-suggestions {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 20;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+      overflow: hidden;
+    }
+    .result-search-suggestion {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #eef2f7;
+      border-radius: 0;
+      background: #fff;
+      color: var(--text);
+      text-align: left;
+      padding: 9px 10px;
+      font-weight: 500;
+    }
+    .result-search-suggestion:last-child {
+      border-bottom: 0;
+    }
+    .result-search-suggestion:hover {
+      background: #f8fbff;
+    }
+    .result-search-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .result-search-results {
+      margin-top: 12px;
+    }
+    .result-search-toggle-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
     .project-tile {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -927,6 +1002,15 @@
       font-weight: 700;
       line-height: 1.25;
       word-break: break-word;
+    }
+    .project-tile-name.short {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+    }
+    .project-tile.compact {
+      min-height: 0;
     }
     .project-tile-meta {
       margin-top: auto;
@@ -1066,6 +1150,10 @@
       padding: 8px;
       min-height: 70px;
     }
+    .student-chip.compact {
+      min-height: 0;
+      padding: 7px 8px;
+    }
     .student-chip.outside-choice {
       border-color: #ef4444;
       background: #fef2f2;
@@ -1082,6 +1170,38 @@
       font-size: 11px;
       color: var(--muted);
       line-height: 1.35;
+    }
+    .student-chip-meta.short {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+    }
+    .result-display-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+    .result-display-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+    }
+    .result-display-group-title {
+      width: 100%;
+      font-size: 12px;
+      font-weight: 700;
+      color: #162033;
+      margin-bottom: -4px;
     }
     .student-chip.wish-source-chip {
       background: #fff;
@@ -1216,6 +1336,9 @@
       }
       .project-overview-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .project-results-top.with-search {
+        grid-template-columns: 1fr;
       }
       .student-chip-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1964,6 +2087,22 @@
                 </select>
               </div>
             </div>
+            <div class="result-display-controls" id="resultDisplayControls">
+              <div class="result-display-group-title">Schülerkarten</div>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayFirstName" checked /> Vorname</label>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayLastName" /> Nachname</label>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayClass" checked /> Klasse</label>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayProjectNumber" /> Projektnummer</label>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayProjectName" /> Projektname</label>
+              <label class="result-display-option"><input type="checkbox" id="resultDisplayProjectNameShort" /> Projektname kurz</label>
+              <div class="result-display-group-title">Projektübersicht</div>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayNumber" checked /> Nummer</label>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayName" checked /> Projektname</label>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayNameShort" /> Projektname kurz</label>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayBar" checked /> Balken</label>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayYears" checked /> Jahrgang</label>
+              <label class="result-display-option"><input type="checkbox" id="resultProjectDisplayLoad" checked /> Belegung</label>
+            </div>
             <div id="projectResultsWrap"></div>
           </section>
 
@@ -2076,6 +2215,26 @@
       openResultProjects: [],
       resultViewAssignments: null,
       resultProjectSort: 'number',
+      resultDisplay: {
+        firstName: true,
+        lastName: false,
+        className: true,
+        projectNumber: false,
+        projectName: false,
+        projectNameShort: false
+      },
+      resultProjectDisplay: {
+        number: false,
+        name: false,
+        nameShort: true,
+        bar: true,
+        years: true,
+        load: true
+      },
+      resultSearch: {
+        open: false,
+        query: ''
+      },
       selectedResultStudents: [],
       resultDragStudentIds: [],
       openWishSections: [],
@@ -4005,13 +4164,13 @@
         return wishes instanceof Set && wishes.has(entry.projectId);
       });
       const beforeEntries = [...unconditionalBeforeEntries, ...wishedConditionalBeforeEntries]
-        .sort((a, b) => a.rowIndex - b.rowIndex);
+        .sort((a, b) => {
+          const aIgnored = isStudentWishIgnored(a.studentId, data) ? 1 : 0;
+          const bIgnored = isStudentWishIgnored(b.studentId, data) ? 1 : 0;
+          if (aIgnored !== bIgnored) return bIgnored - aIgnored;
+          return a.rowIndex - b.rowIndex;
+        });
       const excludedStudentIds = new Set(excludedEntries.map((entry) => entry.studentId));
-      const ignoredStudentIds = new Set([
-        ...excludedEntries.map((entry) => entry.studentId),
-        ...beforeEntries.map((entry) => entry.studentId),
-        ...afterEntries.map((entry) => entry.studentId)
-      ]);
       const remainingCapacity = new Map((data.projects || []).map((project) => [project.id, Math.max(0, Number(project.capacity || 0))]));
       const beforeAssignedMap = new Map();
       const beforeOverflowEntries = [];
@@ -4027,6 +4186,11 @@
       });
 
       const afterAssignedMap = new Map(afterEntries.map((entry) => [entry.studentId, entry.projectId]));
+      const ignoredStudentIds = new Set([
+        ...excludedEntries.map((entry) => entry.studentId),
+        ...beforeAssignedMap.keys(),
+        ...afterEntries.map((entry) => entry.studentId)
+      ]);
       return {
         sourceSheet: specialImport.sourceSheet || '',
         entries: resolvedEntries,
@@ -7490,6 +7654,312 @@
       renderProjectResults(state.resultViewAssignments);
     }
 
+    function splitStudentNameParts(fullName) {
+      const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return { firstName: '', lastName: '' };
+      if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+      return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' ')
+      };
+    }
+
+    function compareResultSearchRows(a, b) {
+      const classCompare = String(a?.className || '').localeCompare(String(b?.className || ''), 'de', { numeric: true, sensitivity: 'base' });
+      if (classCompare !== 0) return classCompare;
+      const aNameParts = splitStudentNameParts(a?.studentName || '');
+      const bNameParts = splitStudentNameParts(b?.studentName || '');
+      const lastNameCompare = String(aNameParts.lastName || aNameParts.firstName || '').localeCompare(String(bNameParts.lastName || bNameParts.firstName || ''), 'de', { numeric: true, sensitivity: 'base' });
+      if (lastNameCompare !== 0) return lastNameCompare;
+      return String(a?.studentName || '').localeCompare(String(b?.studentName || ''), 'de', { numeric: true, sensitivity: 'base' });
+    }
+
+    function buildResultStudentInfoLines(studentName, className, projectNumber, projectName) {
+      const display = state.resultDisplay || {};
+      const parts = splitStudentNameParts(studentName);
+      const lines = [];
+      if (display.firstName && parts.firstName) lines.push({ text: parts.firstName, short: false });
+      if (display.lastName && parts.lastName) lines.push({ text: parts.lastName, short: false });
+      if (display.className && className) lines.push({ text: className, short: false });
+      if (display.projectNumber && projectNumber) lines.push({ text: `#${projectNumber}`, short: false });
+      if (display.projectName && projectName) lines.push({ text: projectName, short: false });
+      if (display.projectNameShort && projectName) lines.push({ text: projectName, short: true });
+      return lines;
+    }
+
+    function syncResultDisplayControls() {
+      if (els.resultDisplayFirstName) els.resultDisplayFirstName.checked = !!state.resultDisplay?.firstName;
+      if (els.resultDisplayLastName) els.resultDisplayLastName.checked = !!state.resultDisplay?.lastName;
+      if (els.resultDisplayClass) els.resultDisplayClass.checked = !!state.resultDisplay?.className;
+      if (els.resultDisplayProjectNumber) els.resultDisplayProjectNumber.checked = !!state.resultDisplay?.projectNumber;
+      if (els.resultDisplayProjectName) els.resultDisplayProjectName.checked = !!state.resultDisplay?.projectName;
+      if (els.resultDisplayProjectNameShort) els.resultDisplayProjectNameShort.checked = !!state.resultDisplay?.projectNameShort;
+      if (els.resultProjectDisplayNumber) els.resultProjectDisplayNumber.checked = !!state.resultProjectDisplay?.number;
+      if (els.resultProjectDisplayName) els.resultProjectDisplayName.checked = !!state.resultProjectDisplay?.name;
+      if (els.resultProjectDisplayNameShort) els.resultProjectDisplayNameShort.checked = !!state.resultProjectDisplay?.nameShort;
+      if (els.resultProjectDisplayBar) els.resultProjectDisplayBar.checked = !!state.resultProjectDisplay?.bar;
+      if (els.resultProjectDisplayYears) els.resultProjectDisplayYears.checked = !!state.resultProjectDisplay?.years;
+      if (els.resultProjectDisplayLoad) els.resultProjectDisplayLoad.checked = !!state.resultProjectDisplay?.load;
+    }
+
+    function updateMutuallyExclusiveProjectNameDisplay(group, key, checked) {
+      if (group === 'student') {
+        state.resultDisplay = Object.assign({}, state.resultDisplay || {}, {
+          projectName: key === 'projectName' ? checked : (checked ? false : !!state.resultDisplay?.projectName),
+          projectNameShort: key === 'projectNameShort' ? checked : (checked ? false : !!state.resultDisplay?.projectNameShort)
+        });
+        if (checked) {
+          if (key === 'projectName') state.resultDisplay.projectNameShort = false;
+          if (key === 'projectNameShort') state.resultDisplay.projectName = false;
+        }
+      } else if (group === 'project') {
+        state.resultProjectDisplay = Object.assign({}, state.resultProjectDisplay || {}, {
+          name: key === 'name' ? checked : (checked ? false : !!state.resultProjectDisplay?.name),
+          nameShort: key === 'nameShort' ? checked : (checked ? false : !!state.resultProjectDisplay?.nameShort)
+        });
+        if (checked) {
+          if (key === 'name') state.resultProjectDisplay.nameShort = false;
+          if (key === 'nameShort') state.resultProjectDisplay.name = false;
+        }
+      }
+      syncResultDisplayControls();
+    }
+
+    function normalizeResultSearchText(value) {
+      return String(value || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('de')
+        .trim();
+    }
+
+    function buildResultSearchRows(assignments) {
+      if (!state.data) return [];
+      const assignmentMap = new Map((assignments?.byStudent || []).map((row) => [row.studentId, row.projectId]));
+      const resolvedSpecial = buildResolvedSpecialImport(state.data, state.specialImport);
+      const specialKindByStudentId = new Map((resolvedSpecial?.validEntries || []).map((entry) => [entry.studentId, entry.specialKind]));
+      const excludedStudentIds = resolvedSpecial?.excludedStudentIds || new Set();
+      return (state.data.students || []).map((student) => {
+        const assignedProjectId = assignmentMap.get(student.id) || '';
+        const assignedProject = (state.data.projects || []).find((project) => project.id === assignedProjectId) || null;
+        const className = getStudentDisplayClass(student.id);
+        const yearRaw = state.data.yearMap?.get(student.id);
+        const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+        const choices = state.data.choiceMap?.get(student.id) || new Set();
+        return {
+          studentId: student.id,
+          studentName: student.name,
+          normalizedName: normalizeResultSearchText(student.name),
+          className,
+          normalizedClass: normalizeResultSearchText(className),
+          yearLabel,
+          yearValue: parseYearGroup(yearLabel),
+          yearRaw: String(yearRaw || '').trim(),
+          assignedProjectId,
+          assignedProjectName: assignedProject?.name || '',
+          assignedProjectNumber: assignedProject ? getProjectDisplayNumber(assignedProject, state.data.projects.findIndex((entry) => entry.id === assignedProject.id)) : '',
+          normalizedProjectName: normalizeResultSearchText(assignedProject?.name || ''),
+          normalizedProjectNumber: normalizeResultSearchText(assignedProject ? `#${getProjectDisplayNumber(assignedProject, state.data.projects.findIndex((entry) => entry.id === assignedProject.id))}` : ''),
+          specialKind: specialKindByStudentId.get(student.id) || '',
+          wishIgnored: isStudentWishIgnored(student.id, state.data),
+          outsideChoice: assignedProjectId ? !choices.has(assignedProjectId) : false,
+          draggable: !excludedStudentIds.has(student.id)
+        };
+      });
+    }
+
+    function buildResultSearchCriterion(token, classNames, projectMap) {
+      const normalized = normalizeResultSearchText(token);
+      if (!normalized) return null;
+      if (normalized === 'ignoriert') return { type: 'wishIgnored', label: token };
+      if (normalized === 'ohne wunsch') return { type: 'outsideChoice', label: token };
+      if (normalized === 'vorher' || normalized === 'nachher' || normalized === 'garnicht' || normalized === 'falls gewunscht') return { type: 'special', value: normalized, label: token };
+      const yearMatch = normalized.match(/^(?:jg\.?\s*)?(\d{1,2})$/);
+      if (yearMatch) return { type: 'year', value: String(Number(yearMatch[1])), label: token };
+      if (classNames.has(normalized)) return { type: 'class', value: normalized, label: token };
+      if (projectMap.has(normalized)) {
+        const project = projectMap.get(normalized);
+        return { type: 'project', value: project.id, label: token };
+      }
+      return { type: 'text', value: normalized, label: token };
+    }
+
+    function parseResultSearchCriteria(query) {
+      const classNames = new Set((state.data?.students || []).map((student) => normalizeResultSearchText(getStudentDisplayClass(student.id))).filter(Boolean));
+      const projectMap = new Map((state.data?.projects || []).map((project, idx) => [
+        normalizeResultSearchText(project.name),
+        { id: project.id, name: project.name, number: getProjectDisplayNumber(project, idx) }
+      ]));
+      const source = String(query || '').trim();
+      if (!source) return null;
+      const tokens = [];
+      let buffer = '';
+      const flushBuffer = () => {
+        const token = buffer.trim();
+        buffer = '';
+        if (token) tokens.push({ type: 'term', value: token });
+      };
+      for (const char of source) {
+        if (char === ',' || char === ';' || char === '(' || char === ')') {
+          flushBuffer();
+          tokens.push({ type: char });
+        } else {
+          buffer += char;
+        }
+      }
+      flushBuffer();
+
+      let index = 0;
+      const peek = () => tokens[index] || null;
+      const consume = () => tokens[index++] || null;
+
+      function parsePrimary() {
+        const token = peek();
+        if (!token) return null;
+        if (token.type === 'term') {
+          consume();
+          return buildResultSearchCriterion(token.value, classNames, projectMap);
+        }
+        if (token.type === '(') {
+          consume();
+          const expr = parseOrExpression();
+          if (peek()?.type === ')') consume();
+          return expr;
+        }
+        if (token.type === ')') {
+          return null;
+        }
+        return null;
+      }
+
+      function parseAndExpression() {
+        let left = parsePrimary();
+        if (!left) return null;
+        while (peek()?.type === ',') {
+          consume();
+          const right = parsePrimary();
+          if (!right) continue;
+          left = { type: 'and', terms: left.type === 'and' ? [...left.terms, right] : [left, right] };
+        }
+        return left;
+      }
+
+      function parseOrExpression() {
+        let left = parseAndExpression();
+        if (!left) return null;
+        while (peek()?.type === ';') {
+          consume();
+          const right = parseAndExpression();
+          if (!right) continue;
+          left = { type: 'or', terms: left.type === 'or' ? [...left.terms, right] : [left, right] };
+        }
+        return left;
+      }
+
+      return parseOrExpression();
+    }
+
+    function resultSearchExpressionHasCriteria(expr) {
+      if (!expr) return false;
+      if (expr.type === 'and' || expr.type === 'or') return (expr.terms || []).some((term) => resultSearchExpressionHasCriteria(term));
+      return true;
+    }
+
+    function matchesResultSearchExpression(row, expr) {
+      if (!expr) return true;
+      if (expr.type === 'and') return (expr.terms || []).every((term) => matchesResultSearchExpression(row, term));
+      if (expr.type === 'or') return (expr.terms || []).some((term) => matchesResultSearchExpression(row, term));
+      return studentMatchesResultSearchCriterion(row, expr);
+    }
+
+    function studentMatchesResultSearchCriterion(row, criterion) {
+      if (!criterion) return true;
+      if (criterion.type === 'wishIgnored') return !!row.wishIgnored;
+      if (criterion.type === 'outsideChoice') return !!row.outsideChoice && !row.wishIgnored;
+      if (criterion.type === 'special') return normalizeResultSearchText(row.specialKind) === criterion.value;
+      if (criterion.type === 'year') return String(row.yearRaw || '') === criterion.value || String(row.yearValue || '') === criterion.value;
+      if (criterion.type === 'class') return row.normalizedClass === criterion.value;
+      if (criterion.type === 'project') return row.assignedProjectId === criterion.value;
+      if (criterion.type === 'text') {
+        return row.normalizedName.includes(criterion.value)
+          || row.normalizedClass.includes(criterion.value)
+          || row.normalizedProjectName.includes(criterion.value)
+          || row.normalizedProjectNumber.includes(criterion.value)
+          || normalizeResultSearchText(row.yearLabel).includes(criterion.value)
+          || normalizeResultSearchText(row.yearRaw).includes(criterion.value);
+      }
+      return true;
+    }
+
+    function buildResultSearchSuggestions(query, assignments) {
+      if (!state.data) return [];
+      const rawQuery = String(query || '');
+      const draftMatch = rawQuery.match(/([^,;()]*)$/);
+      const draft = normalizeResultSearchText(draftMatch ? draftMatch[1] : '');
+      if (!draft) return [];
+      const rows = buildResultSearchRows(assignments);
+      const suggestions = [];
+      const pushUnique = (key, suggestion) => {
+        if (!key || suggestions.some((entry) => entry.key === key)) return;
+        suggestions.push({ key, ...suggestion });
+      };
+      rows.filter((row) => row.normalizedName.includes(draft)).slice(0, 8).forEach((row) => {
+        pushUnique(`name:${row.normalizedName}`, {
+          label: row.studentName,
+          meta: `Schülername · ${row.className} · ${row.yearLabel}`
+        });
+      });
+      [...new Set(rows.map((row) => row.className).filter(Boolean))]
+        .filter((className) => normalizeResultSearchText(className).includes(draft))
+        .slice(0, 6)
+        .forEach((className) => {
+          pushUnique(`class:${normalizeResultSearchText(className)}`, {
+            label: className,
+            meta: 'Klasse'
+          });
+        });
+      [...new Set(rows.map((row) => row.yearLabel).filter(Boolean))]
+        .filter((yearLabel) => normalizeResultSearchText(yearLabel).includes(draft) || normalizeResultSearchText(yearLabel).replace(/^jg\s*/, '').includes(draft))
+        .slice(0, 6)
+        .forEach((yearLabel) => {
+          pushUnique(`year:${normalizeResultSearchText(yearLabel)}`, {
+            label: yearLabel,
+            meta: 'Jahrgang'
+          });
+        });
+      (state.data.projects || [])
+        .filter((project) => normalizeResultSearchText(project.name).includes(draft))
+        .slice(0, 8)
+        .forEach((project, idx) => {
+          pushUnique(`project:${project.id}`, {
+            label: project.name,
+            meta: `Projekt · #${getProjectDisplayNumber(project, idx)}`
+          });
+        });
+      ['vorher', 'nachher', 'falls gewünscht', 'garnicht', 'ignoriert', 'ohne Wunsch']
+        .filter((label) => normalizeResultSearchText(label).includes(draft))
+        .forEach((label) => {
+          pushUnique(`special:${label}`, {
+            label,
+            meta: label === 'ignoriert'
+              ? 'Wünsche ignoriert'
+              : (label === 'ohne Wunsch' ? 'Nicht gewünschtes Projekt ohne Ignorierstatus' : 'Besonderheit')
+          });
+        });
+      return suggestions.slice(0, 12);
+    }
+
+    function applyResultSearchSuggestion(label) {
+      const query = String(state.resultSearch?.query || '');
+      const match = query.match(/^(.*?)([^,;()]*)$/);
+      if (!match) {
+        state.resultSearch.query = `${label}, `;
+        return;
+      }
+      const prefix = match[1] || '';
+      state.resultSearch.query = `${prefix}${label}, `;
+    }
+
     function renderProjectResults(assignments) {
       state.resultViewAssignments = assignments || null;
       if (!assignments) {
@@ -7507,6 +7977,13 @@
       const assignmentMap = new Map((assignments.byStudent || []).map((row) => [row.studentId, row.projectId]));
       const projectHighlights = getResultProjectHighlightSets();
       const eligibleProjects = getEligibleResultProjectSet();
+      const projectDisplay = state.resultProjectDisplay || {};
+      const searchRows = buildResultSearchRows(assignments);
+      const searchCriteria = parseResultSearchCriteria(state.resultSearch?.query || '');
+      const searchSuggestions = buildResultSearchSuggestions(state.resultSearch?.query || '', assignments);
+      const filteredSearchRows = resultSearchExpressionHasCriteria(searchCriteria)
+        ? searchRows.filter((row) => matchesResultSearchExpression(row, searchCriteria)).sort(compareResultSearchRows)
+        : [];
       const overview = sortedProjects.map(({ project, idx, metrics }) => {
         const isActive = state.openResultProjects.includes(project.id);
         const statusClass = metrics.overCapacity ? 'over-capacity' : (metrics.underMinFill ? 'under-min-fill' : '');
@@ -7521,20 +7998,23 @@
           ? ' · Wunsch-Schnittmenge der Auswahl'
           : (projectHighlights.suggested.has(project.id) ? ' · Häufig gewünschtes Projekt der Auswahl' : '');
         const dropLabel = dropDisabled ? ' · Jahrgang der Auswahl nicht zugelassen' : '';
+        const metaTop = [];
+        if (statusLabel) metaTop.push(statusLabel);
+        const compact = !projectDisplay.number && !projectDisplay.name && !projectDisplay.bar && !projectDisplay.years && !projectDisplay.load;
         return `
-          <button type="button" class="project-tile ${statusClass} ${highlightClass} ${dropDisabled ? 'drop-disabled' : ''} ${isActive ? 'active' : ''}" data-project-toggle="${escapeHtml(project.id)}" data-drop-project="${escapeHtml(project.id)}" data-drop-disabled="${dropDisabled ? 'true' : 'false'}" aria-pressed="${isActive ? 'true' : 'false'}" title="${escapeHtml(project.name)}${statusLabel ? ' · ' + escapeHtml(statusLabel) : ''}${highlightLabel}${dropLabel}">
-            <div class="project-tile-number">#${escapeHtml(getProjectDisplayNumber(project, idx))}</div>
-            <div class="project-tile-name">${escapeHtml(project.name)}</div>
+          <button type="button" class="project-tile ${statusClass} ${highlightClass} ${dropDisabled ? 'drop-disabled' : ''} ${isActive ? 'active' : ''} ${compact ? 'compact' : ''}" data-project-toggle="${escapeHtml(project.id)}" data-drop-project="${escapeHtml(project.id)}" data-drop-disabled="${dropDisabled ? 'true' : 'false'}" aria-pressed="${isActive ? 'true' : 'false'}" title="${escapeHtml(project.name)}${statusLabel ? ' · ' + escapeHtml(statusLabel) : ''}${highlightLabel}${dropLabel}">
+            ${projectDisplay.number ? `<div class="project-tile-number">#${escapeHtml(getProjectDisplayNumber(project, idx))}</div>` : ''}
+            ${(projectDisplay.name || projectDisplay.nameShort) ? `<div class="project-tile-name ${projectDisplay.nameShort ? 'short' : ''}">${escapeHtml(project.name)}</div>` : ''}
             <div class="project-tile-meta">
-              <div>${metrics.studentCount} Schüler · ${metrics.freePlaces} frei${statusLabel ? ' · ' + escapeHtml(statusLabel) : ''}</div>
-              <div>${escapeHtml(formatProjectYearRangeLabel(project.allowedYears || []))}</div>
-              <div class="project-capacity-bar" aria-hidden="true">
+              ${metaTop.length ? `<div>${metaTop.map((part) => escapeHtml(part)).join(' · ')}</div>` : ''}
+              ${projectDisplay.years ? `<div>${escapeHtml(formatProjectYearRangeLabel(project.allowedYears || []))}</div>` : ''}
+              ${projectDisplay.bar ? `<div class="project-capacity-bar" aria-hidden="true">
                 <div class="project-capacity-fill with-choice" style="width:${metrics.withChoiceFillPercent.toFixed(1)}%" title="Mit Wunsch: ${metrics.withChoiceCount}"></div>
                 <div class="project-capacity-fill without-choice" style="width:${metrics.outsideChoiceFillPercent.toFixed(1)}%" title="Ohne Wunsch: ${metrics.outsideChoiceCount}"></div>
                 <div class="project-capacity-fill ignored-wish" style="width:${metrics.ignoredWishFillPercent.toFixed(1)}%" title="Wünsche ignoriert: ${metrics.ignoredWishCount}"></div>
                 ${metrics.overCapacity && metrics.capacity > 0 ? `<div class="project-capacity-marker" style="left:${metrics.capacityMarkerPercent.toFixed(1)}%" title="Kapazitätsgrenze bei ${metrics.capacity}"></div>` : ''}
-              </div>
-              <div class="project-capacity-label"><span>${metrics.studentCount}/${metrics.capacity || '—'} · min ${metrics.minFill || 0}</span><span>blau ${metrics.withChoiceCount} · rot ${metrics.outsideChoiceCount} · orange ${metrics.ignoredWishCount}</span></div>
+              </div>` : ''}
+              ${projectDisplay.load ? `<div class="project-capacity-label"><span>${metrics.studentCount}/${metrics.capacity || '—'} · min ${metrics.minFill || 0}</span></div>` : ''}
             </div>
           </button>
         `;
@@ -7553,11 +8033,12 @@
               const outsideChoice = !choices.has(projectId);
               const wishIgnored = isStudentWishIgnored(row.studentId, state.data);
               const selected = (state.selectedResultStudents || []).includes(row.studentId);
+              const projectNumber = getProjectDisplayNumber(project, projectIndex);
+              const infoLines = buildResultStudentInfoLines(row.studentName, className, projectNumber, project.name);
+              const compact = infoLines.length <= 2 && !wishIgnored;
               return `
-                <div class="student-chip ${outsideChoice ? 'outside-choice' : ''} ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(projectId)}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}">
-                  <div class="student-chip-name">${escapeHtml(row.studentName)}</div>
-                  <div class="student-chip-meta">${escapeHtml(className)}</div>
-                  ${wishIgnored ? '<div class="student-chip-meta emphasis">Wünsche ignoriert</div>' : ''}
+                <div class="student-chip ${outsideChoice ? 'outside-choice' : ''} ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(projectId)}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}">
+                  ${infoLines.length ? infoLines.map((line, index) => `<div class="${index === 0 ? 'student-chip-name' : `student-chip-meta${line.short ? ' short' : ''}`}">${escapeHtml(line.text)}</div>`).join('') : `<div class="student-chip-name">${escapeHtml(row.studentName)}</div>`}
                 </div>
               `;
             }).join('')
@@ -7579,12 +8060,12 @@
               const currentProjectNumber = getProjectNumberLabelById(row.projectId);
               const className = getStudentDisplayClass(row.studentId);
               const wishIgnored = isStudentWishIgnored(row.studentId, state.data);
+              const sourceProjectName = state.data.projects.find((entry) => entry.id === row.projectId)?.name || '';
+              const infoLines = buildResultStudentInfoLines(row.studentName, className, currentProjectNumber, sourceProjectName);
+              const compact = infoLines.length <= 2 && !wishIgnored;
               return `
-                <div class="student-chip wish-source-chip ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(row.projectId || '')}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}">
-                  <div class="student-chip-name">${escapeHtml(row.studentName)}</div>
-                  <div class="student-chip-meta">Projekt #${escapeHtml(currentProjectNumber)}</div>
-                  <div class="student-chip-meta">${escapeHtml(className)}</div>
-                  ${wishIgnored ? '<div class="student-chip-meta emphasis">Wünsche ignoriert</div>' : ''}
+                <div class="student-chip wish-source-chip ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(row.projectId || '')}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}">
+                  ${infoLines.length ? infoLines.map((line, index) => `<div class="${index === 0 ? 'student-chip-name' : `student-chip-meta${line.short ? ' short' : ''}`}">${escapeHtml(line.text)}</div>`).join('') : `<div class="student-chip-name">${escapeHtml(row.studentName)}</div>`}
                 </div>
               `;
             }).join('')
@@ -7616,8 +8097,56 @@
         `;
       }).join('');
 
+      const searchResultCards = filteredSearchRows.length
+        ? filteredSearchRows.map((row) => {
+            const infoLines = buildResultStudentInfoLines(row.studentName, row.className, row.assignedProjectNumber, row.assignedProjectName);
+            const selected = (state.selectedResultStudents || []).includes(row.studentId);
+            const compact = infoLines.length <= 2 && !row.wishIgnored;
+            return `
+              <div class="student-chip ${row.outsideChoice ? 'outside-choice' : ''} ${row.wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(row.assignedProjectId || '')}" draggable="${row.draggable ? 'true' : 'false'}" aria-pressed="${selected ? 'true' : 'false'}">
+                ${infoLines.length ? infoLines.map((line, index) => `<div class="${index === 0 ? 'student-chip-name' : `student-chip-meta${line.short ? ' short' : ''}`}">${escapeHtml(line.text)}</div>`).join('') : `<div class="student-chip-name">${escapeHtml(row.studentName)}</div>`}
+              </div>
+            `;
+          }).join('')
+        : '';
+      const searchPanel = state.resultSearch?.open ? `
+        <aside class="result-search-panel">
+          <div class="result-search-header">
+            <h4 class="result-search-title">Suche</h4>
+            <button type="button" class="ghost" data-result-search-toggle="close">Schließen</button>
+          </div>
+          <div class="result-search-input-wrap">
+            <input id="resultSearchInput" type="text" value="${escapeHtml(state.resultSearch?.query || '')}" placeholder="Name, Klasse, Jahrgang, Projekt, vorher, falls gewünscht, nachher, garnicht, ignoriert, ohne Wunsch" autocomplete="off" />
+            <div class="analysis-note" style="margin:8px 0 0">Komma bedeutet UND, Semikolon bedeutet ODER, Klammern gruppieren Ausdrücke, z. B. <span class="mono">A,(B;C)</span>. Filterbar sind Name, Klasse, Jahrgang, Projekt sowie die Besonderheiten <span class="mono">vorher</span>, <span class="mono">nachher</span>, <span class="mono">garnicht</span>, <span class="mono">falls gewünscht</span>, <span class="mono">ignoriert</span> und <span class="mono">ohne Wunsch</span>.</div>
+            ${searchSuggestions.length ? `
+              <div class="result-search-suggestions">
+                ${searchSuggestions.map((suggestion) => `
+                  <button type="button" class="result-search-suggestion" data-result-search-suggestion="${escapeHtml(suggestion.label)}">
+                    <div>${escapeHtml(suggestion.label)}</div>
+                    <div class="result-search-meta">${escapeHtml(suggestion.meta || '')}</div>
+                  </button>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+          <div class="result-search-results">
+            ${resultSearchExpressionHasCriteria(searchCriteria)
+              ? (searchResultCards
+                ? `<div class="student-chip-grid">${searchResultCards}</div><div class="project-subsection-note">${filteredSearchRows.length} Treffer · Schüler können direkt per Drag & Drop auf ein Projekt gezogen werden.</div>`
+                : '<div class="analysis-note">Keine Schüler passen auf die eingegebenen Filtergruppen.</div>')
+              : '<div class="analysis-note">Kriterien eingeben: Komma verknüpft mit UND, Semikolon mit ODER, Klammern gruppieren.</div>'}
+          </div>
+        </aside>
+      ` : '';
+
       els.projectResultsWrap.innerHTML = `
-        <div class="project-overview-grid">${overview}</div>
+        <div class="result-search-toggle-row">
+          ${state.resultSearch?.open ? '' : '<button type="button" class="ghost" data-result-search-toggle="open">Suche öffnen</button>'}
+        </div>
+        <div class="project-results-top ${state.resultSearch?.open ? 'with-search' : ''}">
+          <div class="project-overview-grid">${overview}</div>
+          ${searchPanel}
+        </div>
         ${details ? `<div class="project-focus-grid">${details}</div>` : '<div class="analysis-note" style="margin-top:16px">Noch kein Projekt geöffnet. Klicke oben auf einen Projektnamen, um die zugeordneten Schüler anzuzeigen.</div>'}
       `;
     }
@@ -10610,6 +11139,9 @@
           resultViewAssignments: state.resultViewAssignments,
           openResultProjects: state.openResultProjects,
           resultProjectSort: state.resultProjectSort,
+          resultDisplay: state.resultDisplay,
+          resultProjectDisplay: state.resultProjectDisplay,
+          resultSearch: state.resultSearch,
           selectedResultStudents: state.selectedResultStudents,
           openWishSections: state.openWishSections,
           analysisUi: state.analysisUi,
@@ -10650,6 +11182,32 @@
       state.openResultProjects = Array.isArray(restored.openResultProjects) ? restored.openResultProjects : [];
       state.resultViewAssignments = restored.resultViewAssignments || state.solution?.assignments || null;
       state.resultProjectSort = restored.resultProjectSort || 'number';
+      state.resultDisplay = Object.assign({
+        firstName: true,
+        lastName: false,
+        className: true,
+        projectNumber: false,
+        projectName: false,
+        projectNameShort: false
+      }, restored.resultDisplay || {});
+      state.resultProjectDisplay = Object.assign({
+        number: true,
+        name: true,
+        nameShort: false,
+        bar: true,
+        years: true,
+        load: true
+      }, restored.resultProjectDisplay || {});
+      if (state.resultDisplay.projectName && state.resultDisplay.projectNameShort) {
+        state.resultDisplay.projectNameShort = false;
+      }
+      if (state.resultProjectDisplay.name && state.resultProjectDisplay.nameShort) {
+        state.resultProjectDisplay.nameShort = false;
+      }
+      state.resultSearch = Object.assign({
+        open: false,
+        query: ''
+      }, restored.resultSearch || {});
       state.selectedResultStudents = Array.isArray(restored.selectedResultStudents) ? restored.selectedResultStudents : [];
       state.resultDragStudentIds = [];
       state.openWishSections = Array.isArray(restored.openWishSections) ? restored.openWishSections : [];
@@ -10695,6 +11253,7 @@
       }
 
       if (els.resultProjectSort) els.resultProjectSort.value = state.resultProjectSort || 'number';
+      syncResultDisplayControls();
       if (els.analysisProjectSort) els.analysisProjectSort.value = state.analysisUi.projectSort || 'outsideChoice';
       if (els.analysisClassSort) els.analysisClassSort.value = state.analysisUi.classSort || 'wishRate';
       if (els.analysisCohortMode) els.analysisCohortMode.value = state.analysisUi.cohortMode || 'year';
@@ -10831,6 +11390,29 @@
           state.resultSuppressChipClick = false;
         });
         els.projectResultsWrap.addEventListener('click', (event) => {
+          const searchToggle = event.target.closest('[data-result-search-toggle]');
+          if (searchToggle) {
+            event.preventDefault();
+            event.stopPropagation();
+            state.resultSearch = Object.assign({}, state.resultSearch || {}, {
+              open: searchToggle.dataset.resultSearchToggle === 'open'
+            });
+            if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+            return;
+          }
+          const suggestionBtn = event.target.closest('[data-result-search-suggestion]');
+          if (suggestionBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            applyResultSearchSuggestion(suggestionBtn.dataset.resultSearchSuggestion || '');
+            if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+            const input = document.getElementById('resultSearchInput');
+            if (input) requestAnimationFrame(() => {
+              input.focus();
+              input.setSelectionRange(input.value.length, input.value.length);
+            });
+            return;
+          }
           const chip = event.target.closest('[data-student-chip]');
           if (chip) {
             const studentId = chip.dataset.studentChip;
@@ -10879,6 +11461,7 @@
         els.projectResultsWrap.addEventListener('dragstart', (event) => {
           const chip = event.target.closest('[data-student-chip]');
           if (!chip) return;
+          if (chip.getAttribute('draggable') !== 'true') return;
           const studentId = chip.dataset.studentChip;
           state.resultSuppressChipClick = true;
           let selectedIds = [...(state.selectedResultStudents || [])];
@@ -10945,6 +11528,24 @@
           if (!selectedIds.length) return;
           applyManualProjectMove(targetProjectId, selectedIds);
         });
+        els.projectResultsWrap.addEventListener('input', (event) => {
+          if (event.target.id !== 'resultSearchInput') return;
+          const input = event.target;
+          const cursorStart = input.selectionStart || input.value.length;
+          const cursorEnd = input.selectionEnd || input.value.length;
+          state.resultSearch = Object.assign({}, state.resultSearch || {}, {
+            open: true,
+            query: input.value
+          });
+          if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+          const nextInput = document.getElementById('resultSearchInput');
+          if (nextInput) {
+            requestAnimationFrame(() => {
+              nextInput.focus();
+              nextInput.setSelectionRange(cursorStart, cursorEnd);
+            });
+          }
+        });
       }
       document.addEventListener('dragover', (event) => {
         if (!(state.resultDragStudentIds || []).length) return;
@@ -10969,6 +11570,7 @@
         const insideResults = event.target.closest('#projectResultsWrap');
         if (insideResults) {
           if (event.target.closest('#projectResultsWrap .student-chip')) return;
+          if (event.target.closest('.result-search-panel, .result-search-toggle-row, #resultSearchInput, [data-result-search-suggestion]')) return;
           if (event.target.closest('[data-project-toggle], [data-project-close], [data-project-wish-toggle], .project-focus-card, .project-overview-grid')) return;
         }
         state.resultPointerDownStudentId = null;
@@ -10982,6 +11584,48 @@
           if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
         });
       }
+      [
+        ['resultDisplayFirstName', 'firstName'],
+        ['resultDisplayLastName', 'lastName'],
+        ['resultDisplayClass', 'className'],
+        ['resultDisplayProjectNumber', 'projectNumber'],
+        ['resultDisplayProjectName', 'projectName'],
+        ['resultDisplayProjectNameShort', 'projectNameShort']
+      ].forEach(([elementId, key]) => {
+        if (!els[elementId]) return;
+        els[elementId].addEventListener('change', () => {
+          if (key === 'projectName' || key === 'projectNameShort') {
+            updateMutuallyExclusiveProjectNameDisplay('student', key, !!els[elementId].checked);
+          } else {
+            state.resultDisplay = Object.assign({}, state.resultDisplay || {}, {
+              [key]: !!els[elementId].checked
+            });
+            syncResultDisplayControls();
+          }
+          if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+        });
+      });
+      [
+        ['resultProjectDisplayNumber', 'number'],
+        ['resultProjectDisplayName', 'name'],
+        ['resultProjectDisplayNameShort', 'nameShort'],
+        ['resultProjectDisplayBar', 'bar'],
+        ['resultProjectDisplayYears', 'years'],
+        ['resultProjectDisplayLoad', 'load']
+      ].forEach(([elementId, key]) => {
+        if (!els[elementId]) return;
+        els[elementId].addEventListener('change', () => {
+          if (key === 'name' || key === 'nameShort') {
+            updateMutuallyExclusiveProjectNameDisplay('project', key, !!els[elementId].checked);
+          } else {
+            state.resultProjectDisplay = Object.assign({}, state.resultProjectDisplay || {}, {
+              [key]: !!els[elementId].checked
+            });
+            syncResultDisplayControls();
+          }
+          if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+        });
+      });
     }
 
     bindEvents();
@@ -10989,6 +11633,7 @@
     renderRuleWorkbench();
     setActiveTab('tabData');
     if (els.resultProjectSort) els.resultProjectSort.value = state.resultProjectSort;
+    syncResultDisplayControls();
     renderProjectTable();
     renderDataSourcesStatus();
     renderStageLog(null);
