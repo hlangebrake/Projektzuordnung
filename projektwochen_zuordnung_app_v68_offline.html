@@ -1784,6 +1784,13 @@
       color: #162033;
       vertical-align: top;
     }
+    .analysis-class-project-table td[data-analysis-student-cell] {
+      cursor: pointer;
+    }
+    .analysis-class-project-table td[data-analysis-student-cell]:hover {
+      outline: 2px solid rgba(37, 99, 235, 0.35);
+      outline-offset: -2px;
+    }
     .analysis-class-project-table tr:last-child td {
       border-bottom: 0;
     }
@@ -1807,8 +1814,99 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .analysis-class-project-singleton {
+      border-color: rgba(220, 38, 38, 0.45) !important;
+      box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.22);
+    }
+    .analysis-class-project-singleton .analysis-class-project-student {
+      color: #991b1b;
+    }
+    .analysis-class-project-singleton .analysis-class-project-project {
+      color: #b91c1c;
+      font-weight: 700;
+    }
     .analysis-class-project-empty {
       background: #ffffff;
+    }
+    .analysis-student-project-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.42);
+    }
+    .analysis-student-project-dialog {
+      width: min(980px, 96vw);
+      max-height: min(760px, 92vh);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+      overflow: hidden;
+    }
+    .analysis-student-project-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbff;
+    }
+    .analysis-student-project-title {
+      margin: 0;
+      font-size: 18px;
+    }
+    .analysis-student-project-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .analysis-student-project-body {
+      padding: 16px;
+      overflow: auto;
+    }
+    .analysis-student-project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .analysis-student-project-grid .project-tile {
+      min-height: 104px;
+      cursor: pointer;
+    }
+    .analysis-student-project-grid .project-tile.assigned-target {
+      outline: 3px solid #2563eb;
+      outline-offset: 1px;
+      background: #dbeafe;
+    }
+    .analysis-student-project-grid .project-tile.wished-target {
+      border-color: #f97316;
+      box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.24);
+    }
+    .analysis-student-project-grid .project-tile.classmate-target {
+      background: #ecfdf5;
+    }
+    .analysis-student-project-grid .project-tile.assigned-target.wished-target {
+      outline-color: #1d4ed8;
+      border-color: #f97316;
+    }
+    .analysis-student-project-grid .project-tile.assigned-target.classmate-target {
+      background: #dbeafe;
+    }
+    .analysis-student-project-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 12px;
     }
     .analysis-tag-list {
       display: flex;
@@ -1837,6 +1935,16 @@
       }
       .analysis-rank-row {
         grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) minmax(64px, auto);
+      }
+    }
+    @media (max-width: 720px) {
+      .analysis-student-project-modal {
+        padding: 10px;
+        align-items: stretch;
+      }
+      .analysis-student-project-dialog {
+        width: 100%;
+        max-height: 96vh;
       }
     }
 
@@ -2043,6 +2151,11 @@
                   <option value="iterative">Iterativ – adaptive Teilproblem-Suche</option>
                 </select>
               </div>
+              <div>
+                <label for="modelReduction">Modellreduktion <span id="modelReductionValue" class="muted">50</span></label>
+                <input id="modelReduction" type="range" min="0" max="100" step="1" value="50" />
+                <div class="small muted">0 = Vollmodell, 50 = bisherige Standardbreite, 100 = sehr stark reduzierte Kandidatenmenge.</div>
+              </div>
               <div id="iterativeIterationsWrap" style="display:none">
                 <label for="iterativeIterations">Iterationen im iterativen Modus <span id="iterativeIterationsValue" class="muted">300</span></label>
                 <input id="iterativeIterations" type="range" min="1" max="3000" step="1" value="300" />
@@ -2050,7 +2163,7 @@
               </div>
             </div>
             <div class="inline-note" style="margin-top:10px">
-              <strong>Schnell</strong> fixiert ab Stufe 2 zusätzlich die Projektgrößen und verengt die Kandidatenmenge um die bisher beste Lösung. <strong>Exakt</strong> lässt diese Zusatzvereinfachung weg und durchsucht spätere Stufen vollständiger, meist langsamer. <strong>Iterativ</strong> baut die Stufen wie im exakten Modus auf, verbessert dann aber wiederholt gezielt ausgewählte Teilmengen per exakten Nachbarschafts-Teilproblemen.
+              <strong>Schnell</strong> fixiert ab Stufe 2 zusätzlich die Projektgrößen und verengt die Kandidatenmenge um die bisher beste Lösung. <strong>Exakt</strong> lässt diese Zusatzvereinfachung weg und durchsucht spätere Stufen vollständiger, meist langsamer. Die <strong>Modellreduktion</strong> steuert, wie breit die Kandidatenmenge im reduzierten Modell bleibt; bei 0 wird ein Vollmodell verwendet. <strong>Iterativ</strong> baut die Stufen wie im exakten Modus auf, verbessert dann aber wiederholt gezielt ausgewählte Teilmengen per exakten Nachbarschafts-Teilproblemen.
             </div>
           </section>
 
@@ -3169,7 +3282,7 @@
               if (x) expr.set(x, 1);
             });
             const reserved = reservedByClass.get(className) || 0;
-            const effectiveLimit = limit - reserved;
+            const effectiveLimit = Math.max(0, limit - reserved);
             if (!expr.size && reserved <= limit) continue;
             if (!expr.size) continue;
             ctx.builder.addConstraint(`classsplit_limit__${project.id}__${sanitizeToken(className)}`, expr, ctx.glpk.GLP_UP, 0, effectiveLimit);
@@ -3277,7 +3390,7 @@
             if (!coeffs.size && reserved <= limit) continue;
             const overflow = ctx.builder.addContinuous(`classsplit_over__${project.id}__${sanitizeToken(className)}`, 0);
             coeffs.set(overflow, -1);
-            ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, limit - reserved);
+            ctx.builder.addConstraint(`classsplit_soft__${project.id}__${sanitizeToken(className)}`, coeffs, ctx.glpk.GLP_UP, 0, Math.max(0, limit - reserved));
             expr.set(overflow, (expr.get(overflow) || 0) - 1);
           }
         });
@@ -4252,18 +4365,11 @@
           return a.rowIndex - b.rowIndex;
         });
       const excludedStudentIds = new Set(excludedEntries.map((entry) => entry.studentId));
-      const remainingCapacity = new Map((data.projects || []).map((project) => [project.id, Math.max(0, Number(project.capacity || 0))]));
       const beforeAssignedMap = new Map();
       const beforeOverflowEntries = [];
 
       beforeEntries.forEach((entry) => {
-        const free = remainingCapacity.get(entry.projectId) || 0;
-        if (free <= 0) {
-          beforeOverflowEntries.push(entry);
-          return;
-        }
         beforeAssignedMap.set(entry.studentId, entry.projectId);
-        remainingCapacity.set(entry.projectId, free - 1);
       });
 
       const afterAssignedMap = new Map(afterEntries.map((entry) => [entry.studentId, entry.projectId]));
@@ -4456,12 +4562,23 @@
 
     function buildEffectiveSolverConfig(config, resolvedSpecial, hardIgnoredPreassignments) {
       const reservedSeats = (resolvedSpecial?.beforeAssignedMap?.size || 0) + (hardIgnoredPreassignments?.assignedMap?.size || 0);
-      if (!reservedSeats) return config;
+      const solverIgnoredStudentIds = new Set([
+        ...((resolvedSpecial?.ignoredStudentIds || new Set()).values()),
+        ...((hardIgnoredPreassignments?.ignoredStudentIds || new Set()).values())
+      ]);
+      if (!reservedSeats && !solverIgnoredStudentIds.size) return config;
+      const filterSolverPairs = (pairs = []) => (pairs || []).filter((pair) => (
+        pair?.a && pair?.b && !solverIgnoredStudentIds.has(pair.a) && !solverIgnoredStudentIds.has(pair.b)
+      ));
       return {
         ...config,
         hard: {
           ...(config?.hard || {}),
           capacity: true
+        },
+        pairs: {
+          friends: filterSolverPairs(config?.pairs?.friends || []),
+          conflicts: filterSolverPairs(config?.pairs?.conflicts || [])
         }
       };
     }
@@ -5239,6 +5356,7 @@
           timeLimit: Math.max(1, asInt(els.timeLimit.value, 30)),
           mipGap: Math.max(0, Number(els.mipGap.value || 0)),
           stageMode: (els.stageSearchMode?.value === 'exact') ? 'exact' : ((els.stageSearchMode?.value === 'iterative') ? 'iterative' : 'fast'),
+          modelReduction: Math.max(0, Math.min(100, asInt(els.modelReduction?.value, 50))),
           iterativeIterations: Math.max(1, Math.min(3000, asInt(els.iterativeIterations?.value, 300)))
         }
       };
@@ -5275,22 +5393,6 @@
             ok: false,
             message: `Die Summe aller Mindestbelegungen (${totalMinFill}) ist größer als die Zahl der Schüler (${data.students.length}).`
           };
-        }
-      }
-
-      if (config.hard.classSplitLimit) {
-        const reservedCounts = data.classSplitReservedCounts || new Map();
-        const limit = getClassSplitLimit(config);
-        for (const project of (data.projects || [])) {
-          const byClass = reservedCounts.get(project.id) || new Map();
-          for (const [className, count] of byClass.entries()) {
-            if ((count || 0) > limit) {
-              return {
-                ok: false,
-                message: `Die Vorab-Zuordnung überschreitet für ${project.name} bereits das Klassenlimit der Klasse ${className}.`
-              };
-            }
-          }
         }
       }
 
@@ -5606,12 +5708,34 @@
       };
     }
 
+    function getModelReduction(config = null) {
+      const solverConfig = config?.solver || config || {};
+      return Math.max(0, Math.min(100, asInt(solverConfig.modelReduction ?? els.modelReduction?.value, 50)));
+    }
+
+    function getReductionSettings(config = null) {
+      const reduction = getModelReduction(config);
+      return {
+        reduction,
+        useFullModel: reduction <= 0,
+        widthFactor: Math.max(0.25, Math.min(2, (150 - reduction) / 100))
+      };
+    }
+
+    function scaleCandidateCount(baseCount, allCount, reductionSettings, minimum = 1) {
+      if (!allCount) return 0;
+      const raw = Math.round(Math.max(minimum, baseCount) * reductionSettings.widthFactor);
+      return Math.max(minimum, Math.min(allCount, raw));
+    }
+
     function buildAssignmentDomain(data, config, mode = 'smart', baseAssignmentMap = null, options = {}) {
       const domain = new Map();
       const allProjectIds = data.projects.filter((project) => !isProjectExclusive(project)).map((project) => project.id);
       const allProjectSet = new Set(allProjectIds);
       const projectById = new Map(data.projects.map((project) => [project.id, project]));
       const onlyChosenHard = !!config.hard.onlyChosen;
+      const reductionSettings = getReductionSettings(config);
+      const effectiveMode = (mode === 'smart' && reductionSettings.useFullModel) ? 'full' : mode;
       const tightenAroundBase = !!options?.tightenAroundBase && !!baseAssignmentMap;
       const fixedAssignmentMap = options?.fixedAssignmentMap instanceof Map
         ? options.fixedAssignmentMap
@@ -5642,7 +5766,7 @@
         return [...new Set(restricted)];
       }
 
-      if (mode === 'full' || onlyChosenHard) {
+      if (effectiveMode === 'full' || onlyChosenHard) {
         data.students.forEach((student) => {
           const choices = getEffectiveChoiceSet(student.id, data);
           let projects = onlyChosenHard ? (choices.size ? [...choices] : [...allProjectIds]) : [...allProjectIds];
@@ -5667,7 +5791,7 @@
           domain,
           mode: onlyChosenHard ? 'onlyChosen' : 'full',
           seed: null,
-          stats: { avgCandidates, maxCandidates: allProjectIds.length, minCandidates: allProjectIds.length }
+          stats: { avgCandidates, maxCandidates: allProjectIds.length, minCandidates: allProjectIds.length, reduction: reductionSettings.reduction }
         };
       }
 
@@ -5676,11 +5800,11 @@
       const friendMateMap = buildFriendMateMap(config.pairs?.friends || []);
       const complexHard = !!(config.hard.minFill || config.hard.togetherPairs || config.hard.separatePairs || config.hard.hardBalanceLoad);
       const fallbackCount = tightenAroundBase
-        ? Math.min(allProjectIds.length, complexHard ? 2 : 1)
-        : (complexHard ? Math.min(allProjectIds.length, 8) : Math.min(allProjectIds.length, 4));
+        ? scaleCandidateCount(complexHard ? 2 : 1, allProjectIds.length, reductionSettings, 1)
+        : scaleCandidateCount(complexHard ? 8 : 4, allProjectIds.length, reductionSettings, 1);
       const maxFallbackExpansion = tightenAroundBase
-        ? Math.min(allProjectIds.length, complexHard ? 4 : 3)
-        : (complexHard ? Math.min(allProjectIds.length, 12) : Math.min(allProjectIds.length, 6));
+        ? scaleCandidateCount(complexHard ? 4 : 3, allProjectIds.length, reductionSettings, 1)
+        : scaleCandidateCount(complexHard ? 12 : 6, allProjectIds.length, reductionSettings, 2);
 
       data.students.forEach((student) => {
         const candidates = new Set();
@@ -5744,7 +5868,7 @@
         seed: tightenAroundBase ? baseAssignmentMap : (greedySeed.ok ? greedySeed.assignment : null),
         seedOk: tightenAroundBase ? true : !!greedySeed.ok,
         seedReason: tightenAroundBase ? '' : (greedySeed.ok ? '' : (greedySeed.reason || 'Kein Greedy-Seed gefunden.')),
-        stats: { avgCandidates, maxCandidates, minCandidates, fallbackCount, tightenAroundBase }
+        stats: { avgCandidates, maxCandidates, minCandidates, fallbackCount, maxFallbackExpansion, tightenAroundBase, reduction: reductionSettings.reduction }
       };
     }
 
@@ -5936,6 +6060,12 @@
       return Math.max(1, Math.min(3000, asInt(solverConfig.iterativeIterations ?? els.iterativeIterations?.value, 300)));
     }
 
+    function updateModelReductionControls() {
+      if (els.modelReductionValue) {
+        els.modelReductionValue.textContent = String(getModelReduction());
+      }
+    }
+
     function updateIterativeControls() {
       const isIterative = els.stageSearchMode?.value === 'iterative';
       if (els.iterativeIterationsWrap) {
@@ -5944,6 +6074,7 @@
       if (els.iterativeIterationsValue) {
         els.iterativeIterationsValue.textContent = String(getIterativeIterationBudget());
       }
+      updateModelReductionControls();
     }
 
     function buildSolveOptions(glpk, timeLimit, mipGap) {
@@ -6072,7 +6203,8 @@
         const limit = getClassSplitLimit(compiled.config);
         const reservedCounts = data.classSplitReservedCounts || new Map();
         for (const project of data.projects) {
-          const classCounts = new Map(reservedCounts.get(project.id) || []);
+          const reservedByClass = reservedCounts.get(project.id) || new Map();
+          const classCounts = new Map();
           for (const student of data.students) {
             if (assignmentMap.get(student.id) !== project.id) continue;
             const className = data.classMap?.get(student.id) || '';
@@ -6080,7 +6212,8 @@
             const yearValue = parseStudentYearNumber(data.yearMap?.get(student.id));
             if (!isClassSplitRelevantYear(yearValue)) continue;
             classCounts.set(className, (classCounts.get(className) || 0) + 1);
-            if ((classCounts.get(className) || 0) > limit) {
+            const remainingLimit = Math.max(0, limit - (reservedByClass.get(className) || 0));
+            if ((classCounts.get(className) || 0) > remainingLimit) {
               return { ok: false, reason: `Klassenlimit für ${className} in ${project.name} überschritten.` };
             }
           }
@@ -7533,6 +7666,96 @@
       return true;
     }
 
+    function getProjectShortTitle(project) {
+      const raw = String(project?.shortName || project?.name || '').trim();
+      return raw.length > 38 ? `${raw.slice(0, 35).trim()}...` : raw;
+    }
+
+    function closeAnalysisStudentProjectPopup() {
+      document.querySelectorAll('[data-analysis-student-project-modal]').forEach((node) => node.remove());
+    }
+
+    function openAnalysisStudentProjectPopup(studentId) {
+      if (!state.data || !studentId) return;
+      const assignments = getEditableAssignments();
+      if (!assignments?.byStudent?.length) return;
+      const student = state.data.students.find((entry) => entry.id === studentId);
+      if (!student) return;
+      const assignmentMap = structuredAssignmentsToMap(assignments);
+      const currentProjectId = assignmentMap.get(studentId) || '';
+      const wishes = state.data.choiceMap?.get(studentId) || new Set();
+      const className = getStudentDisplayClass(studentId);
+      const yearRaw = state.data.yearMap?.get(studentId);
+      const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+      const classmateProjectIds = new Set();
+      (state.data.students || []).forEach((candidate) => {
+        if (candidate.id === studentId) return;
+        if (getStudentDisplayClass(candidate.id) !== className) return;
+        const projectId = assignmentMap.get(candidate.id) || '';
+        if (projectId) classmateProjectIds.add(projectId);
+      });
+      const projectTiles = sortProjectsByNumber(state.data.projects).map((project) => {
+        const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
+        const metrics = getProjectResultMetrics(project, assignments, idx);
+        const isCurrent = project.id === currentProjectId;
+        const isWish = wishes.has(project.id);
+        const hasClassmate = classmateProjectIds.has(project.id);
+        const statusClass = metrics.overCapacity ? 'over-capacity' : (metrics.underMinFill ? 'under-min-fill' : '');
+        return `
+          <button type="button" class="project-tile ${statusClass} ${hasClassmate ? 'classmate-target' : ''} ${isCurrent ? 'assigned-target active' : ''} ${isWish ? 'wished-target' : ''}" data-analysis-assign-project="${escapeHtml(project.id)}" title="${escapeHtml(project.name)}${isCurrent ? ' · aktuelle Zuordnung' : ''}${isWish ? ' · Wunschprojekt' : ''}${hasClassmate ? ' · Schüler aus derselben Klasse' : ''}">
+            <div class="project-tile-number">#${escapeHtml(getProjectDisplayNumber(project, idx))}</div>
+            <div class="project-tile-name short">${escapeHtml(getProjectShortTitle(project))}</div>
+            <div class="project-tile-meta">
+              <div class="project-capacity-bar" aria-hidden="true">
+                <div class="project-capacity-fill with-choice" style="width:${metrics.withChoiceFillPercent.toFixed(1)}%" title="Mit Wunsch: ${metrics.withChoiceCount}"></div>
+                <div class="project-capacity-fill without-choice" style="width:${metrics.outsideChoiceFillPercent.toFixed(1)}%" title="Ohne Wunsch: ${metrics.outsideChoiceCount}"></div>
+                <div class="project-capacity-fill ignored-wish" style="width:${metrics.ignoredWishFillPercent.toFixed(1)}%" title="Wünsche ignoriert: ${metrics.ignoredWishCount}"></div>
+                ${metrics.overCapacity && metrics.capacity > 0 ? `<div class="project-capacity-marker" style="left:${metrics.capacityMarkerPercent.toFixed(1)}%" title="Kapazitätsgrenze bei ${metrics.capacity}"></div>` : ''}
+              </div>
+              <div class="project-capacity-label"><span>${metrics.studentCount}/${metrics.capacity || '—'} · min ${metrics.minFill || 0}</span></div>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      closeAnalysisStudentProjectPopup();
+      const modal = document.createElement('div');
+      modal.className = 'analysis-student-project-modal';
+      modal.dataset.analysisStudentProjectModal = 'true';
+      modal.dataset.studentId = studentId;
+      modal.innerHTML = `
+        <section class="analysis-student-project-dialog" role="dialog" aria-modal="true" aria-label="Projektzuordnung ändern">
+          <div class="analysis-student-project-head">
+            <div>
+              <h3 class="analysis-student-project-title">${escapeHtml(student.name)}</h3>
+              <div class="analysis-student-project-subtitle">${escapeHtml(className)} · ${escapeHtml(yearLabel)}</div>
+            </div>
+            <button type="button" class="ghost" data-analysis-modal-close>Schließen</button>
+          </div>
+          <div class="analysis-student-project-body">
+            <div class="analysis-student-project-actions">
+              <span>Blau hervorgehoben = aktuelle Zuordnung.</span>
+              <span>Orange umrandet = Wunschprojekt.</span>
+              <span>Grün hinterlegt = Projekt mit Schülern derselben Klasse.</span>
+            </div>
+            <div class="analysis-student-project-grid">${projectTiles}</div>
+          </div>
+        </section>
+      `;
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal || event.target.closest('[data-analysis-modal-close]')) {
+          closeAnalysisStudentProjectPopup();
+          return;
+        }
+        const target = event.target.closest('[data-analysis-assign-project]');
+        if (!target) return;
+        const targetProjectId = target.dataset.analysisAssignProject;
+        closeAnalysisStudentProjectPopup();
+        applyManualProjectMove(targetProjectId, [studentId]);
+      });
+      document.body.appendChild(modal);
+    }
+
     function clearResultDropTargets() {
       document.querySelectorAll('.drop-target').forEach((node) => node.classList.remove('drop-target'));
     }
@@ -8865,8 +9088,15 @@
       });
 
       const classProjectGroupRows = classRows.map((classRow) => {
-        const students = visibleStudents
-          .filter((student) => getStudentDisplayClass(student.id) === classRow.className)
+        const classStudents = visibleStudents
+          .filter((student) => getStudentDisplayClass(student.id) === classRow.className);
+        const projectCounts = new Map();
+        classStudents.forEach((student) => {
+          const projectId = assignmentMap.get(student.id) || '';
+          if (!projectId) return;
+          projectCounts.set(projectId, (projectCounts.get(projectId) || 0) + 1);
+        });
+        const students = classStudents
           .map((student) => {
             const projectId = assignmentMap.get(student.id) || '';
             const projectEntry = projectId ? projectMap.get(projectId) : null;
@@ -8881,6 +9111,8 @@
               projectId,
               projectNumber: project ? Number(getProjectDisplayNumber(project, projectIndex)) : Number.POSITIVE_INFINITY,
               projectLabel: project ? `#${getProjectDisplayNumber(project, projectIndex)}` : '—',
+              projectTitle: project?.name || '',
+              isProjectSingleton: !!projectId && (projectCounts.get(projectId) || 0) === 1,
               bgColor: project ? getAnalysisProjectSoftColor(project, projectIndex) : '#ffffff'
             };
           })
@@ -9010,6 +9242,15 @@
         cohortSelect.addEventListener('change', (event) => {
           state.analysisUi.cohortMode = event.target.value;
           renderAnalysis(assignments);
+        });
+      }
+      if (els.analysisChartsWrap) {
+        els.analysisChartsWrap.querySelectorAll('[data-analysis-student-cell]').forEach((cell) => {
+          cell.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openAnalysisStudentProjectPopup(event.currentTarget.dataset.analysisStudentCell);
+          });
         });
       }
     }
@@ -9358,7 +9599,7 @@
           <div class="analysis-class-project-grid">
             ${(details?.classProjectGroupRows || []).map((row) => {
               const cells = row.students.map((student) => `
-                <td style="background:${escapeHtml(student.bgColor)}" title="${escapeHtml(`${student.fullName} · ${student.projectLabel}`)}">
+                <td class="${student.isProjectSingleton ? 'analysis-class-project-singleton' : ''}" data-analysis-student-cell="${escapeHtml(student.studentId)}" style="background:${escapeHtml(student.isProjectSingleton ? '#fee2e2' : student.bgColor)}" title="${escapeHtml(`${student.fullName} · ${student.projectLabel}${student.projectTitle ? ` ${student.projectTitle}` : ''}${student.isProjectSingleton ? ' · einzig in dieser Klasse' : ''}`)}">
                   <div class="analysis-class-project-cell">
                     <div class="analysis-class-project-student">${escapeHtml(student.compactName)}</div>
                     <div class="analysis-class-project-project">${escapeHtml(student.projectLabel)}</div>
@@ -9885,6 +10126,7 @@
         ['Zeitlimit pro Stufe (Sek.)', readUiConfig().solver.timeLimit],
         ['MIP-Gap', readUiConfig().solver.mipGap],
         ['Stufenmodus', readUiConfig().solver.stageMode === 'exact' ? 'Exakt' : (readUiConfig().solver.stageMode === 'iterative' ? 'Iterativ' : 'Schnell')],
+        ['Modellreduktion', readUiConfig().solver.modelReduction],
         ['Iterationen (iterativ)', readUiConfig().solver.iterativeIterations]
       ];
       if (soft.length) {
@@ -10855,21 +11097,22 @@
         const perStageBudgetSec = Math.max(1, Number(config.solver.timeLimit || 20));
 
         async function compileWithMode(mode, baseAssignmentMap = null, options = {}, silent = false) {
+          const effectiveMode = (mode === 'smart' && getModelReduction(effectiveSolverConfig) <= 0) ? 'full' : mode;
           const limit = Number(options?.maxSoftLevel);
           const scopeSuffix = Number.isFinite(limit) ? ` bis einschließlich Priorität ${limit}` : '';
           if (!silent) {
             await updateLiveStatus({
               phase: 'Modellaufbau',
-              detail: mode === 'full'
+              detail: effectiveMode === 'full'
                 ? `Erzeuge vollständiges Modell${scopeSuffix} mit allen Schüler-Projekt-Kombinationen.`
-                : `Erzeuge beschleunigtes Modell${scopeSuffix} mit reduzierter Kandidatenmenge je Schüler.`,
-              progress: mode === 'full' ? 18 : 16,
-              logMessage: mode === 'full'
+                : `Erzeuge beschleunigtes Modell${scopeSuffix} mit reduzierter Kandidatenmenge je Schüler (Reduktion ${getModelReduction(effectiveSolverConfig)}).`,
+              progress: effectiveMode === 'full' ? 18 : 16,
+              logMessage: effectiveMode === 'full'
                 ? `Kompiliere vollständiges Modell${scopeSuffix}.`
-                : `Kompiliere reduziertes Modell${scopeSuffix} für schnelle Zulässigkeitssuche.`
+                : `Kompiliere reduziertes Modell${scopeSuffix} mit Reduktion ${getModelReduction(effectiveSolverConfig)}.`
             });
           }
-          return compileModel(solverData, effectiveSolverConfig, glpk, mode, true, baseAssignmentMap, options);
+          return compileModel(solverData, effectiveSolverConfig, glpk, effectiveMode, true, baseAssignmentMap, options);
         }
 
         const softStages = listActiveSoftStages(effectiveSolverConfig);
@@ -10902,19 +11145,20 @@
         } else {
           const feasibilityTime = perStageBudgetSec;
           const compileForFeasibility = async (mode) => {
+            const effectiveMode = (mode === 'smart' && getModelReduction(effectiveSolverConfig) <= 0) ? 'full' : mode;
             await updateLiveStatus({
               phase: 'Modellaufbau für Startlösung',
               stageText: 'Phase 0',
               rulesText: 'Nur harte Regeln',
-              detail: mode === 'full'
+              detail: effectiveMode === 'full'
                 ? 'Erzeuge vollständiges Startlösungs-Modell nur mit Kernbedingungen und harten Regeln.'
-                : 'Erzeuge reduziertes Startlösungs-Modell nur mit Kernbedingungen und harten Regeln.',
-              progress: mode === 'full' ? 18 : 16,
-              logMessage: mode === 'full'
+                : `Erzeuge reduziertes Startlösungs-Modell nur mit Kernbedingungen und harten Regeln (Reduktion ${getModelReduction(effectiveSolverConfig)}).`,
+              progress: effectiveMode === 'full' ? 18 : 16,
+              logMessage: effectiveMode === 'full'
                 ? 'Kompiliere vollständiges Hard-Only-Modell für Phase 0.'
-                : 'Kompiliere reduziertes Hard-Only-Modell für Phase 0.'
+                : `Kompiliere reduziertes Hard-Only-Modell für Phase 0 mit Reduktion ${getModelReduction(effectiveSolverConfig)}.`
             });
-            return compileModel(solverData, effectiveSolverConfig, glpk, mode, false, null);
+            return compileModel(solverData, effectiveSolverConfig, glpk, effectiveMode, false, null);
           };
 
           compiled = await compileForFeasibility('smart');
@@ -11274,6 +11518,7 @@
           timeLimit: els.timeLimit?.value ?? '',
           mipGap: els.mipGap?.value ?? '',
           stageSearchMode: els.stageSearchMode?.value ?? 'iterative',
+          modelReduction: els.modelReduction?.value ?? '50',
           iterativeIterations: els.iterativeIterations?.value ?? '300',
           activeTab: getCurrentActiveTabId(),
           sidebarCollapsed: document.body.classList.contains('sidebar-collapsed')
@@ -11378,6 +11623,7 @@
       if (els.timeLimit && ui.timeLimit != null) els.timeLimit.value = ui.timeLimit;
       if (els.mipGap && ui.mipGap != null) els.mipGap.value = ui.mipGap;
       if (els.stageSearchMode) els.stageSearchMode.value = ui.stageSearchMode === 'exact' ? 'exact' : (ui.stageSearchMode === 'fast' ? 'fast' : 'iterative');
+      if (els.modelReduction && ui.modelReduction != null) els.modelReduction.value = String(Math.max(0, Math.min(100, asInt(ui.modelReduction, 50))));
       if (els.iterativeIterations && ui.iterativeIterations != null) els.iterativeIterations.value = ui.iterativeIterations;
       updateIterativeControls();
       document.body.classList.toggle('sidebar-collapsed', !!ui.sidebarCollapsed);
@@ -11483,6 +11729,10 @@
       els.loadSampleDefaultsBtn.addEventListener('click', applyDefaultsOnly);
       if (els.stageSearchMode) {
         els.stageSearchMode.addEventListener('change', updateIterativeControls);
+      }
+      if (els.modelReduction) {
+        els.modelReduction.addEventListener('input', updateModelReductionControls);
+        els.modelReduction.addEventListener('change', updateModelReductionControls);
       }
       if (els.iterativeIterations) {
         els.iterativeIterations.addEventListener('input', updateIterativeControls);
