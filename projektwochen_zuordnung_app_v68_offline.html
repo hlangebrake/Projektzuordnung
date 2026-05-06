@@ -1239,6 +1239,13 @@
       border-color: #b91c1c;
       box-shadow: inset 0 0 0 1px rgba(185,28,28,0.18), 0 0 0 1px rgba(239,68,68,0.08);
     }
+    .student-chip.class-singleton {
+      border-color: #dc2626;
+    }
+    .student-chip.class-singleton.selected {
+      border-color: #dc2626;
+      box-shadow: inset 0 0 0 1px rgba(220,38,38,0.16), 0 0 0 1px rgba(37,99,235,0.10);
+    }
     .student-chip.wish-ignored {
       background: #fff7ed;
       border-color: #fdba74;
@@ -1251,6 +1258,11 @@
     .student-chip.wish-ignored.selected {
       border-color: #ea580c;
       box-shadow: inset 0 0 0 1px rgba(234,88,12,0.18), 0 0 0 1px rgba(234,88,12,0.10);
+    }
+    .student-chip.class-singleton,
+    .student-chip.class-singleton.wish-ignored,
+    .student-chip.class-singleton.outside-choice {
+      border-color: #dc2626;
     }
     .project-tile.drop-target,
     .project-focus-card.drop-target {
@@ -1807,6 +1819,10 @@
       font-weight: 600;
       word-break: break-word;
     }
+    .analysis-class-project-student.wish-ignored {
+      color: #854d0e;
+      font-weight: 800;
+    }
     .analysis-class-project-project {
       font-size: 10px;
       color: rgba(15, 23, 42, 0.7);
@@ -1820,6 +1836,9 @@
     }
     .analysis-class-project-singleton .analysis-class-project-student {
       color: #991b1b;
+    }
+    .analysis-class-project-singleton .analysis-class-project-student.wish-ignored {
+      color: #854d0e;
     }
     .analysis-class-project-singleton .analysis-class-project-project {
       color: #b91c1c;
@@ -1921,6 +1940,115 @@
       font-size: 12px;
       color: var(--muted);
     }
+    .similar-wish-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .similar-wish-slider {
+      display: grid;
+      grid-template-columns: auto minmax(180px, 320px) auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .similar-wish-slider input[type="range"] {
+      width: 100%;
+    }
+    .similar-wish-count {
+      min-width: 34px;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 4px 8px;
+      background: #fff;
+      color: #162033;
+      font-weight: 700;
+    }
+    .similar-wish-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .similar-wish-tile {
+      min-height: 94px;
+      cursor: pointer;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fbfdff;
+      text-align: left;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .similar-wish-tile:hover {
+      border-color: var(--accent);
+      background: #f8fbff;
+      box-shadow: inset 0 0 0 1px rgba(37,99,235,0.12);
+    }
+    .similar-wish-projects {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .similar-wish-project {
+      max-width: 100%;
+      border: 1px solid rgba(37, 99, 235, 0.18);
+      border-radius: 8px;
+      padding: 3px 7px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .similar-wish-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .similar-wish-student-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: min(520px, 62vh);
+      overflow: auto;
+    }
+    .similar-wish-student-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fbfdff;
+      font-size: 13px;
+    }
+    .similar-wish-student-name {
+      font-weight: 700;
+      color: #162033;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .similar-wish-student-meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
     @media (max-width: 1100px) {
       .analysis-kpi-grid,
       .analysis-section-grid {
@@ -1945,6 +2073,13 @@
       .analysis-student-project-dialog {
         width: 100%;
         max-height: 96vh;
+      }
+      .similar-wish-slider,
+      .similar-wish-student-row {
+        grid-template-columns: 1fr;
+      }
+      .similar-wish-student-meta {
+        white-space: normal;
       }
     }
 
@@ -2426,7 +2561,8 @@
       analysisUi: {
         projectSort: 'outsideChoice',
         classSort: 'wishRate',
-        cohortMode: 'year'
+        cohortMode: 'year',
+        similarWishCount: 2
       },
       wishConsiderationThreshold: 1
     };
@@ -7671,6 +7807,124 @@
       return raw.length > 38 ? `${raw.slice(0, 35).trim()}...` : raw;
     }
 
+    function getProjectAbbreviation(project, idx = 0) {
+      const raw = String(project?.shortName || project?.name || '').trim();
+      if (raw) return raw.length > 22 ? `${raw.slice(0, 19).trim()}...` : raw;
+      return `#${getProjectDisplayNumber(project, idx)}`;
+    }
+
+    function buildCombinations(items, size) {
+      const result = [];
+      const selected = [];
+      const walk = (start) => {
+        if (selected.length === size) {
+          result.push([...selected]);
+          return;
+        }
+        for (let index = start; index <= items.length - (size - selected.length); index += 1) {
+          selected.push(items[index]);
+          walk(index + 1);
+          selected.pop();
+        }
+      };
+      if (size > 0 && items.length >= size) walk(0);
+      return result;
+    }
+
+    function getSimilarWishMaxCount(data = state.data) {
+      if (!data?.students?.length) return 1;
+      return Math.max(1, ...(getVisibleStudents(data) || []).map((student) => (data.choiceMap?.get(student.id) || new Set()).size));
+    }
+
+    function buildSimilarWishGroups(data = state.data, wishCount = 2) {
+      if (!data?.students?.length || !data?.projects?.length) return [];
+      const projectEntries = new Map(data.projects.map((project, idx) => [project.id, { project, idx }]));
+      const projectOrder = new Map(sortProjectsByNumber(data.projects).map((project, index) => [project.id, index]));
+      const normalizedWishCount = Math.max(1, Math.min(getSimilarWishMaxCount(data), Number(wishCount) || 1));
+      const groupMap = new Map();
+
+      getVisibleStudents(data).forEach((student) => {
+        const choices = [...(data.choiceMap?.get(student.id) || new Set())]
+          .filter((projectId) => projectEntries.has(projectId))
+          .sort((a, b) => (projectOrder.get(a) || 0) - (projectOrder.get(b) || 0));
+        if (choices.length < normalizedWishCount) return;
+        buildCombinations(choices, normalizedWishCount).forEach((projectIds) => {
+          const key = projectIds.join('|');
+          if (!groupMap.has(key)) {
+            groupMap.set(key, {
+              key,
+              projectIds,
+              students: []
+            });
+          }
+          groupMap.get(key).students.push(student);
+        });
+      });
+
+      return [...groupMap.values()]
+        .filter((group) => group.students.length >= 2)
+        .map((group) => ({
+          ...group,
+          projects: group.projectIds.map((projectId) => projectEntries.get(projectId)).filter(Boolean),
+          students: sortStudentsByName(group.students)
+        }))
+        .sort((a, b) => {
+          if (b.students.length !== a.students.length) return b.students.length - a.students.length;
+          return a.projects.map((entry) => getProjectDisplayNumber(entry.project, entry.idx)).join(',').localeCompare(
+            b.projects.map((entry) => getProjectDisplayNumber(entry.project, entry.idx)).join(','),
+            'de',
+            { numeric: true, sensitivity: 'base' }
+          );
+        });
+    }
+
+    function closeSimilarWishPopup() {
+      document.querySelectorAll('[data-similar-wish-modal]').forEach((node) => node.remove());
+    }
+
+    function openSimilarWishPopup(groupKey) {
+      if (!state.data || !groupKey) return;
+      const wishCount = state.analysisUi?.similarWishCount || 2;
+      const group = buildSimilarWishGroups(state.data, wishCount).find((entry) => entry.key === groupKey);
+      if (!group) return;
+      closeSimilarWishPopup();
+      const projectTitle = group.projects.map(({ project, idx }) => `#${getProjectDisplayNumber(project, idx)} ${project.name}`).join(' · ');
+      const studentRows = group.students.map((student) => {
+        const className = getStudentDisplayClass(student.id);
+        const yearRaw = state.data.yearMap?.get(student.id);
+        const yearLabel = (yearRaw === undefined || yearRaw === null || String(yearRaw).trim() === '') ? 'ohne Jahrgang' : `Jg. ${yearRaw}`;
+        const choiceCount = (state.data.choiceMap?.get(student.id) || new Set()).size;
+        return `
+          <div class="similar-wish-student-row">
+            <div class="similar-wish-student-name">${escapeHtml(student.name)}</div>
+            <div class="similar-wish-student-meta">${escapeHtml(className)}</div>
+            <div class="similar-wish-student-meta">${escapeHtml(yearLabel)} · ${choiceCount} Wünsche</div>
+          </div>
+        `;
+      }).join('');
+      const modal = document.createElement('div');
+      modal.className = 'analysis-student-project-modal';
+      modal.dataset.similarWishModal = 'true';
+      modal.innerHTML = `
+        <section class="analysis-student-project-dialog" role="dialog" aria-modal="true" aria-label="Schüler mit ähnlichen Wünschen">
+          <div class="analysis-student-project-head">
+            <div>
+              <h3 class="analysis-student-project-title">Ähnliche Wünsche</h3>
+              <div class="analysis-student-project-subtitle">${escapeHtml(projectTitle)} · ${group.students.length} Schüler</div>
+            </div>
+            <button type="button" class="ghost" data-similar-wish-close>Schließen</button>
+          </div>
+          <div class="analysis-student-project-body">
+            <div class="similar-wish-student-list">${studentRows}</div>
+          </div>
+        </section>
+      `;
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal || event.target.closest('[data-similar-wish-close]')) closeSimilarWishPopup();
+      });
+      document.body.appendChild(modal);
+    }
+
     function closeAnalysisStudentProjectPopup() {
       document.querySelectorAll('[data-analysis-student-project-modal]').forEach((node) => node.remove());
     }
@@ -8338,18 +8592,25 @@
         const projectIndex = state.data.projects.findIndex(p => p.id === projectId);
         const metrics = getProjectResultMetrics(project, assignments, projectIndex);
         const students = sortStudentRowsForProjectDisplay(assignments.byStudent.filter(row => row.projectId === projectId));
+        const classCounts = new Map();
+        students.forEach((row) => {
+          const className = getStudentDisplayClass(row.studentId);
+          if (!className || className === '—') return;
+          classCounts.set(className, (classCounts.get(className) || 0) + 1);
+        });
         const studentCards = students.length
           ? students.map((row) => {
               const className = getStudentDisplayClass(row.studentId);
               const choices = state.data.choiceMap?.get(row.studentId) || new Set();
               const outsideChoice = !choices.has(projectId);
               const wishIgnored = isStudentWishIgnored(row.studentId, state.data);
+              const classSingleton = !!className && className !== '—' && (classCounts.get(className) || 0) === 1;
               const selected = (state.selectedResultStudents || []).includes(row.studentId);
               const projectNumber = getProjectDisplayNumber(project, projectIndex);
               const infoLines = buildResultStudentInfoLines(row.studentName, className, projectNumber, project.name);
               const compact = infoLines.length <= 2 && !wishIgnored;
               return `
-                <div class="student-chip ${outsideChoice ? 'outside-choice' : ''} ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(projectId)}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}">
+                <div class="student-chip ${outsideChoice ? 'outside-choice' : ''} ${classSingleton ? 'class-singleton' : ''} ${wishIgnored ? 'wish-ignored' : ''} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}" data-student-chip="${escapeHtml(row.studentId)}" data-student-name="${escapeHtml(row.studentName)}" data-source-project="${escapeHtml(projectId)}" draggable="true" aria-pressed="${selected ? 'true' : 'false'}" title="${classSingleton ? escapeHtml('Einziger Schüler dieser Klasse in diesem Projekt') : ''}">
                   ${infoLines.length ? infoLines.map((line, index) => `<div class="${index === 0 ? 'student-chip-name' : `student-chip-meta${line.short ? ' short' : ''}`}">${escapeHtml(line.text)}</div>`).join('') : `<div class="student-chip-name">${escapeHtml(row.studentName)}</div>`}
                 </div>
               `;
@@ -9112,6 +9373,7 @@
               projectNumber: project ? Number(getProjectDisplayNumber(project, projectIndex)) : Number.POSITIVE_INFINITY,
               projectLabel: project ? `#${getProjectDisplayNumber(project, projectIndex)}` : '—',
               projectTitle: project?.name || '',
+              isWishIgnored: isStudentWishIgnored(student.id, state.data),
               isProjectSingleton: !!projectId && (projectCounts.get(projectId) || 0) === 1,
               bgColor: project ? getAnalysisProjectSoftColor(project, projectIndex) : '#ffffff'
             };
@@ -9244,7 +9506,22 @@
           renderAnalysis(assignments);
         });
       }
+      const similarWishRange = document.getElementById('similarWishCountRange');
+      if (similarWishRange) {
+        similarWishRange.value = state.analysisUi.similarWishCount || 2;
+        similarWishRange.addEventListener('input', (event) => {
+          state.analysisUi.similarWishCount = Number(event.target.value) || 1;
+          renderAnalysis(assignments);
+        });
+      }
       if (els.analysisChartsWrap) {
+        els.analysisChartsWrap.querySelectorAll('[data-similar-wish-group]').forEach((tile) => {
+          tile.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openSimilarWishPopup(event.currentTarget.dataset.similarWishGroup);
+          });
+        });
         els.analysisChartsWrap.querySelectorAll('[data-analysis-student-cell]').forEach((cell) => {
           cell.addEventListener('click', (event) => {
             event.preventDefault();
@@ -9599,9 +9876,9 @@
           <div class="analysis-class-project-grid">
             ${(details?.classProjectGroupRows || []).map((row) => {
               const cells = row.students.map((student) => `
-                <td class="${student.isProjectSingleton ? 'analysis-class-project-singleton' : ''}" data-analysis-student-cell="${escapeHtml(student.studentId)}" style="background:${escapeHtml(student.isProjectSingleton ? '#fee2e2' : student.bgColor)}" title="${escapeHtml(`${student.fullName} · ${student.projectLabel}${student.projectTitle ? ` ${student.projectTitle}` : ''}${student.isProjectSingleton ? ' · einzig in dieser Klasse' : ''}`)}">
+                <td class="${student.isProjectSingleton ? 'analysis-class-project-singleton' : ''}" data-analysis-student-cell="${escapeHtml(student.studentId)}" style="background:${escapeHtml(student.isProjectSingleton ? '#fee2e2' : student.bgColor)}" title="${escapeHtml(`${student.fullName} · ${student.projectLabel}${student.projectTitle ? ` ${student.projectTitle}` : ''}${student.isProjectSingleton ? ' · einzig in dieser Klasse' : ''}${student.isWishIgnored ? ' · Wünsche ignoriert' : ''}`)}">
                   <div class="analysis-class-project-cell">
-                    <div class="analysis-class-project-student">${escapeHtml(student.compactName)}</div>
+                    <div class="analysis-class-project-student ${student.isWishIgnored ? 'wish-ignored' : ''}">${student.isWishIgnored ? '! ' : ''}${escapeHtml(student.compactName)}</div>
                     <div class="analysis-class-project-project">${escapeHtml(student.projectLabel)}</div>
                   </div>
                 </td>
@@ -9747,6 +10024,21 @@
           </div>
         `
         : '';
+      const similarWishMax = getSimilarWishMaxCount(state.data);
+      const similarWishCount = Math.max(1, Math.min(similarWishMax, Number(state.analysisUi.similarWishCount) || 2));
+      state.analysisUi.similarWishCount = similarWishCount;
+      const similarWishGroups = buildSimilarWishGroups(state.data, similarWishCount);
+      const similarWishTiles = similarWishGroups.map((group) => `
+        <button type="button" class="similar-wish-tile" data-similar-wish-group="${escapeHtml(group.key)}" title="${escapeHtml(group.projects.map(({ project, idx }) => `#${getProjectDisplayNumber(project, idx)} ${project.name}`).join(' · '))}">
+          <div class="similar-wish-projects">
+            ${group.projects.map(({ project, idx }) => `<span class="similar-wish-project">${escapeHtml(getProjectAbbreviation(project, idx))}</span>`).join('')}
+          </div>
+          <div class="similar-wish-meta">
+            <strong>${group.students.length} Schüler</strong>
+            <span>${similarWishCount} gleiche Wünsche</span>
+          </div>
+        </button>
+      `).join('');
 
       els.analysisChartsWrap.innerHTML = `
         <div class="analysis-toolbar">
@@ -9935,6 +10227,24 @@
               </table>
               <div class="analysis-mini-note">Es werden alle Schüler ohne Wunschzuordnung angezeigt, sortiert nach Jahrgang, Klasse und Nachname.</div>
             ` : '<div class="analysis-note">Aktuell ist kein Schüler außerhalb seiner Wunschmenge zugeordnet.</div>'}
+          </div>
+        </details>
+
+        <details class="analysis-collapse">
+          <summary><span>Ähnliche Wünsche</span><span class="metric-sub">Schülergruppen mit einer einstellbaren Anzahl gleicher Projektwünsche</span></summary>
+          <div class="analysis-collapse-body">
+            <div class="similar-wish-controls">
+              <div class="similar-wish-slider">
+                <label for="similarWishCountRange">Gleiche Wünsche</label>
+                <input id="similarWishCountRange" type="range" min="1" max="${similarWishMax}" step="1" value="${similarWishCount}" />
+                <span class="similar-wish-count">${similarWishCount}</span>
+              </div>
+              <div class="metric-sub">${similarWishGroups.length} Gruppe${similarWishGroups.length === 1 ? '' : 'n'} gefunden</div>
+            </div>
+            ${similarWishTiles ? `
+              <div class="similar-wish-grid">${similarWishTiles}</div>
+              <div class="analysis-mini-note" style="margin-top:10px">Eine Kachel steht für genau die angezeigte Wunschkombination. Schüler können in mehreren Gruppen vorkommen, wenn sie mehr Wünsche angegeben haben.</div>
+            ` : '<div class="analysis-note">Für die aktuelle Anzahl gleicher Wünsche gibt es keine Gruppen mit mindestens zwei Schülern.</div>'}
           </div>
         </details>
 
@@ -11607,7 +11917,7 @@
       state.selectedResultStudents = Array.isArray(restored.selectedResultStudents) ? restored.selectedResultStudents : [];
       state.resultDragStudentIds = [];
       state.openWishSections = Array.isArray(restored.openWishSections) ? restored.openWishSections : [];
-      state.analysisUi = Object.assign({ projectSort: 'outsideChoice', classSort: 'wishRate', cohortMode: 'year' }, restored.analysisUi || {});
+      state.analysisUi = Object.assign({ projectSort: 'outsideChoice', classSort: 'wishRate', cohortMode: 'year', similarWishCount: 2 }, restored.analysisUi || {});
       state.wishConsiderationThreshold = Math.max(0, Number(restored.wishConsiderationThreshold ?? ui.wishThreshold ?? 3) || 0);
       state.resultPointerDownStudentId = null;
       state.resultPointerDownWasSelected = false;
@@ -11654,6 +11964,7 @@
       if (els.analysisProjectSort) els.analysisProjectSort.value = state.analysisUi.projectSort || 'outsideChoice';
       if (els.analysisClassSort) els.analysisClassSort.value = state.analysisUi.classSort || 'wishRate';
       if (els.analysisCohortMode) els.analysisCohortMode.value = state.analysisUi.cohortMode || 'year';
+      if (els.similarWishCountRange) els.similarWishCountRange.value = state.analysisUi.similarWishCount || 2;
 
       renderStageLog(state.solution?.stageResults || null);
       renderProjectResults(state.resultViewAssignments || null);
