@@ -613,6 +613,155 @@
       position: static;
       background: #eef2ff;
     }
+    .print-report .compact-class-list,
+    .print-report .compact-project-list {
+      margin-bottom: 0;
+    }
+    .print-report .compact-class-list h2,
+    .print-report .compact-project-list h2 {
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+    .print-report .compact-class-list table,
+    .print-report .compact-project-list table {
+      font-size: calc(9px * var(--export-name-font-scale, 1));
+      line-height: 1.08;
+    }
+    .print-report .compact-class-list th,
+    .print-report .compact-class-list td,
+    .print-report .compact-project-list th,
+    .print-report .compact-project-list td {
+      padding: 2px 4px;
+    }
+    .a3-project-overview {
+      font-size: 8px;
+      line-height: 1.12;
+    }
+    .a3-project-overview-head {
+      display: flex;
+      margin-bottom: 6px;
+      color: #111827;
+    }
+    .a3-project-overview-title {
+      margin: 0;
+      font-size: 16px;
+    }
+    .a3-project-overview-page {
+      break-after: page;
+      page-break-after: always;
+    }
+    .a3-project-overview-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
+    .a3-project-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 3mm;
+      align-items: start;
+    }
+    .a3-project-column {
+      display: flex;
+      flex-direction: column;
+      gap: 3mm;
+    }
+    .a3-project-box {
+      width: 100%;
+      box-sizing: border-box;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      border: 0.6px solid #94a3b8;
+      border-radius: 4px;
+      margin: 0;
+      overflow: hidden;
+      background: #fff;
+    }
+    .a3-project-box-head {
+      padding: 3px 4px;
+      background: #e0f2fe;
+      border-bottom: 0.6px solid #94a3b8;
+    }
+    .a3-project-box-title {
+      font-size: calc(7.4px * var(--export-name-font-scale, 1));
+      font-weight: 800;
+      color: #0f172a;
+      overflow-wrap: anywhere;
+    }
+    .a3-project-box table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: calc(6.8px * var(--export-name-font-scale, 1));
+      line-height: 1.08;
+    }
+    .a3-project-box th,
+    .a3-project-box td {
+      padding: 1px 2px;
+      border-bottom: 0.3px solid #e5e7eb;
+      vertical-align: top;
+    }
+    .a3-project-box th {
+      background: #f8fafc;
+      color: #475569;
+      font-weight: 700;
+    }
+    .a3-project-box td:first-child,
+    .a3-project-box th:first-child {
+      width: 23%;
+      white-space: nowrap;
+    }
+    .a3-project-box tr:last-child td {
+      border-bottom: 0;
+    }
+    .a3-project-box.large table {
+      font-size: calc(6.2px * var(--export-name-font-scale, 1));
+    }
+    .a3-project-box.huge table {
+      font-size: calc(5.5px * var(--export-name-font-scale, 1));
+    }
+    .export-slider-row {
+      display: grid;
+      grid-template-columns: auto minmax(160px, 260px) auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .export-slider-row input[type="range"] {
+      width: 100%;
+    }
+    .export-slider-value {
+      min-width: 42px;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 3px 7px;
+      background: #fff;
+      color: #162033;
+      font-weight: 700;
+    }
+    .a3-page-planner {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .a3-page-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .a3-page-row-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .a3-page-row input {
+      min-width: 0;
+      padding: 7px 9px;
+      font-size: 12px;
+    }
         .export-group {
       display: grid;
       gap: 8px;
@@ -1369,6 +1518,10 @@
         size: A4 portrait;
         margin: 12mm;
       }
+      @page projectOverviewA3 {
+        size: A3 landscape;
+        margin: 8mm;
+      }
       body {
         background: white;
       }
@@ -1385,6 +1538,9 @@
         top: 0;
         width: 100%;
         padding: 0;
+      }
+      #printReport.a3-project-overview {
+        page: projectOverviewA3;
       }
       #printReport table {
         page-break-inside: auto;
@@ -2433,8 +2589,15 @@
               <div class="button-row">
                 <button id="exportProjectListsExcelBtn" class="ghost" disabled>Als Excel exportieren</button>
                 <button id="printProjectListsBtn" class="ghost" disabled>Als PDF drucken</button>
+                <button id="printProjectListsOverviewBtn" class="ghost" disabled>Gesamt-Druck A3</button>
                 <button id="downloadProjectListPdfsBtn" class="ghost" disabled>Einzel-PDFs herunterladen</button>
                 <button id="zipProjectListPdfsBtn" class="ghost" disabled>PDF-ZIP herunterladen</button>
+              </div>
+              <label class="result-display-option"><input type="checkbox" id="projectPdfIncludeWished" checked /> PDF-Spalte „gewünscht“ ausgeben</label>
+              <div class="export-group-title" style="margin-top:4px">A3-Gesamt-Druck Seiten</div>
+              <div id="projectOverviewPagesPlanner" class="a3-page-planner"></div>
+              <div class="button-row">
+                <button id="addProjectOverviewPageBtn" type="button" class="ghost">Seite hinzufügen</button>
               </div>
             </div>
             <div class="export-group">
@@ -2454,6 +2617,14 @@
               </div>
             </div>
             <hr style="margin:14px 0; border:none; border-top:1px solid var(--line)">
+            <div class="export-group">
+              <div class="export-group-title">PDF-Schrift</div>
+              <div class="export-slider-row">
+                <label for="exportNameFontScale">Namen/Klassen</label>
+                <input id="exportNameFontScale" type="range" min="4" max="24" step="0.5" value="9" />
+                <span id="exportNameFontScaleValue" class="export-slider-value">9 pt</span>
+              </div>
+            </div>
             <div class="button-row">
               <button id="exportCsvBtn" class="ghost" disabled>Zuordnung als CSV exportieren</button>
               <button id="exportWorkbookBtn" class="ghost" disabled>Alle Tabellen als Excel-Mappe exportieren</button>
@@ -2563,6 +2734,17 @@
         classSort: 'wishRate',
         cohortMode: 'year',
         similarWishCount: 2
+      },
+      exportOptions: {
+        projectPdfIncludeWished: true,
+        nameFontSize: 9,
+        projectOverviewPages: [
+          '1,2,3,4,5,6,7',
+          '8,9,10,11,12,13,14,15,16',
+          '17,18,19,20,21,22,23,24,25',
+          '26,27,28,29,30,31,33',
+          '45,46,47,40,41,42,43,44'
+        ]
       },
       wishConsiderationThreshold: 1
     };
@@ -3905,6 +4087,7 @@
       els.printPdfBtn.disabled = !hasData;
       if (els.exportProjectListsExcelBtn) els.exportProjectListsExcelBtn.disabled = !hasSolution;
       if (els.printProjectListsBtn) els.printProjectListsBtn.disabled = !hasSolution;
+      if (els.printProjectListsOverviewBtn) els.printProjectListsOverviewBtn.disabled = !hasSolution;
       if (els.downloadProjectListPdfsBtn) els.downloadProjectListPdfsBtn.disabled = !hasSolution;
       if (els.zipProjectListPdfsBtn) els.zipProjectListPdfsBtn.disabled = !hasSolution;
       if (els.exportClassListsExcelBtn) els.exportClassListsExcelBtn.disabled = !hasSolution;
@@ -10383,18 +10566,25 @@
     }
 
     function studentResultsAoA() {
-      const header = ['#', 'Schüler', 'Klasse', 'Jahrgang', 'Zuordnung', 'Gewählt'];
+      const header = ['#', 'Schüler', 'Klasse', 'Jahrgang', 'Projektnummer', 'Projektname', 'Gewählt'];
       if (!state.data) return [header];
-      if (!state.solution?.assignments) return [header, ['', '', '', '', 'Noch kein Ergebnis vorhanden.', '']];
+      if (!state.solution?.assignments) return [header, ['', '', '', '', '', 'Noch kein Ergebnis vorhanden.', '']];
+      const projectById = new Map(state.data.projects.map((project, idx) => [project.id, { project, idx }]));
       const projectName = Object.fromEntries(state.data.projects.map(p => [p.id, p.name]));
-      const rows = state.solution.assignments.byStudent.map((row, idx) => [
-        idx + 1,
-        row.studentName,
-        state.data.classMap?.get(row.studentId) || '—',
-        state.data.yearMap?.get(row.studentId) || '—',
-        projectName[row.projectId] || '—',
-        [...(state.data.choiceMap.get(row.studentId) || [])].map(pid => projectName[pid]).filter(Boolean).join(', ')
-      ]);
+      const rows = state.solution.assignments.byStudent.map((row, idx) => {
+        const entry = projectById.get(row.projectId);
+        const projectNumber = entry ? `#${getProjectDisplayNumber(entry.project, entry.idx)}` : '—';
+        const assignedProjectName = entry ? entry.project.name : '—';
+        return [
+          idx + 1,
+          row.studentName,
+          state.data.classMap?.get(row.studentId) || '—',
+          state.data.yearMap?.get(row.studentId) || '—',
+          projectNumber,
+          assignedProjectName,
+          [...(state.data.choiceMap.get(row.studentId) || [])].map(pid => projectName[pid]).filter(Boolean).join(', ')
+        ];
+      });
       return [header, ...rows];
     }
 
@@ -10475,25 +10665,87 @@
       return sortStudentRowsForProjectDisplay((state.solution?.assignments?.byStudent || []).filter((row) => row.projectId === projectId));
     }
 
-    function buildProjectListSections() {
+    function shouldIncludeProjectPdfWishedColumn() {
+      return !!(state.exportOptions?.projectPdfIncludeWished ?? true);
+    }
+
+    function getDefaultProjectOverviewPages() {
+      return [
+        '1,2,3,4,5,6,7',
+        '8,9,10,11,12,13,14,15,16',
+        '17,18,19,20,21,22,23,24,25',
+        '26,27,28,29,30,31,33',
+        '45,46,47,40,41,42,43,44'
+      ];
+    }
+
+    function getProjectOverviewPages() {
+      const pages = Array.isArray(state.exportOptions?.projectOverviewPages)
+        ? state.exportOptions.projectOverviewPages
+        : getDefaultProjectOverviewPages();
+      return pages.length ? pages.map((entry) => String(entry || '')) : getDefaultProjectOverviewPages();
+    }
+
+    function renderProjectOverviewPagePlanner() {
+      if (!els.projectOverviewPagesPlanner) return;
+      const pages = getProjectOverviewPages();
+      state.exportOptions.projectOverviewPages = pages;
+      els.projectOverviewPagesPlanner.innerHTML = pages.map((entry, index) => `
+        <div class="a3-page-row">
+          <div class="a3-page-row-label">Seite ${index + 1}</div>
+          <input type="text" value="${escapeHtml(entry)}" data-project-overview-page="${index}" placeholder="z. B. 1,2,3,4" />
+          <button type="button" class="ghost" data-remove-project-overview-page="${index}" ${pages.length <= 1 ? 'disabled' : ''}>Entfernen</button>
+        </div>
+      `).join('');
+    }
+
+    function getExportNameFontSize() {
+      const legacyScale = Number(state.exportOptions?.nameFontScale);
+      const fallback = Number.isFinite(legacyScale) ? (9 * legacyScale / 100) : 9;
+      const value = Number(state.exportOptions?.nameFontSize ?? fallback);
+      return Math.max(4, Math.min(24, Number.isFinite(value) ? value : 9));
+    }
+
+    function syncExportNameFontScaleControls() {
+      const fontSize = getExportNameFontSize();
+      state.exportOptions.nameFontSize = fontSize;
+      delete state.exportOptions.nameFontScale;
+      if (els.exportNameFontScale) els.exportNameFontScale.value = String(fontSize);
+      if (els.exportNameFontScaleValue) els.exportNameFontScaleValue.textContent = `${Number(fontSize.toFixed(1))} pt`;
+    }
+
+    function resetPrintReportMode() {
+      if (!els.printReport) return;
+      els.printReport.className = 'print-report';
+      els.printReport.style.removeProperty('--export-name-font-scale');
+    }
+
+    function buildProjectListSections(options = {}) {
       if (!state.data || !state.solution?.assignments) return [];
+      const includeWished = options.includeWished !== false;
+      const compact = !!options.compact;
       return sortProjectsByNumber(state.data.projects).map((project) => {
         const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
         const rows = getSortedAssignmentRowsForProject(project.id).map((row) => {
           const className = getStudentDisplayClass(row.studentId);
           const wished = (state.data.choiceMap.get(row.studentId) || new Set()).has(project.id);
-          return [className, row.studentName, wished ? 'ja' : 'nein'];
+          return includeWished ? [className, row.studentName, wished ? 'ja' : 'nein'] : [className, row.studentName];
         });
+        const header = includeWished ? ['Klasse', 'Name', 'gewünscht'] : ['Klasse', 'Name'];
+        const emptyRow = includeWished ? ['—', 'Keine zugeordneten Schüler', ''] : ['—', 'Keine zugeordneten Schüler'];
         return {
           sheetName: `P${getProjectDisplayNumber(project, idx)}`,
           title: `Projekt #${getProjectDisplayNumber(project, idx)} – ${project.name}`,
-          aoa: [['Klasse', 'Name', 'gewünscht'], ...(rows.length ? rows : [['—', 'Keine zugeordneten Schüler', '']])]
+          aoa: [header, ...(rows.length ? rows : [emptyRow])],
+          compactRows: compact,
+          printClass: compact ? 'compact-project-list' : ''
         };
       });
     }
 
-    function buildClassListSections() {
+    function buildClassListSections(options = {}) {
       if (!state.data || !state.solution?.assignments) return [];
+      const compact = !!options.compact;
       const studentsAll = Array.isArray(state.data.students) ? state.data.students : [];
       const assignmentMap = new Map((state.solution.assignments.byStudent || []).map((row) => [row.studentId, row.projectId]));
       const projectById = new Map((state.data.projects || []).map((project, idx) => [project.id, { project, idx }]));
@@ -10510,13 +10762,16 @@
         const rows = students.map((student) => {
           const projectId = assignmentMap.get(student.id) || '';
           const entry = projectById.get(projectId);
-          const projectLabel = entry ? `#${getProjectDisplayNumber(entry.project, entry.idx)} ${entry.project.name}` : '—';
-          return [student.name, projectLabel];
+          const projectNumber = entry ? `#${getProjectDisplayNumber(entry.project, entry.idx)}` : '—';
+          const projectName = entry ? entry.project.name : '—';
+          return [student.name, projectNumber, projectName];
         });
         return {
           sheetName: `Klasse_${className}`,
           title: `Klasse ${className}`,
-          aoa: [['Name', 'Projekt'], ...(rows.length ? rows : [['Keine Schüler vorhanden', '']])]
+          aoa: [['Name', 'Projektnummer', 'Projektname'], ...(rows.length ? rows : [['Keine Schüler vorhanden', '', '']])],
+          compactRows: compact,
+          printClass: compact ? 'compact-class-list' : ''
         };
       });
     }
@@ -10536,13 +10791,15 @@
       return [['Name', 'Projektnummer', 'Projektname'], ...rows];
     }
 
-    function buildSectionPrintHtml(title, sections) {
+    function buildSectionPrintHtml(title, sections, options = {}) {
+      const includeTitle = options.includeTitle !== false;
+      const scale = (getExportNameFontSize() / 9).toFixed(2);
       return `
-        <div class="report-section">
+        ${includeTitle ? `<div class="report-section">
           <h1>${escapeHtml(title)}</h1>
-        </div>
+        </div>` : ''}
         ${sections.map((section, idx) => `
-          <div class="report-section ${idx > 0 ? 'print-page-break' : ''}">
+          <div class="report-section ${idx > 0 ? 'print-page-break' : ''} ${escapeHtml(section.printClass || '')}" style="--export-name-font-scale:${scale}">
             <h2>${escapeHtml(section.title)}</h2>
             ${aoaToHtmlTable(section.aoa)}
           </div>
@@ -10550,14 +10807,215 @@
       `;
     }
 
+    function estimateProjectOverviewBoxHeight(item) {
+      const nameFontSize = getExportNameFontSize();
+      const rowCount = Math.max(1, item?.rows?.length || 0);
+      const titleLength = String(item?.project?.name || '').length + 5;
+      const titleRows = Math.max(1, Math.ceil(titleLength / 28));
+      const titleHeight = titleRows * Math.max(4.2, nameFontSize * 0.36) + 4;
+      const tableHeaderHeight = Math.max(3.2, nameFontSize * 0.34);
+      const rowHeight = Math.max(2.4, nameFontSize * 0.33);
+      return titleHeight + tableHeaderHeight + rowCount * rowHeight + 3;
+    }
+
+    function packProjectOverviewPage(items, pageHeight) {
+      const columnCount = 5;
+      const columns = Array.from({ length: columnCount }, () => ({ height: 0, items: [] }));
+      (items || []).forEach((item) => {
+        const target = columns.reduce((best, column) => column.height < best.height ? column : best, columns[0]);
+        target.items.push(item);
+        target.height += item.estimatedHeight;
+      });
+      return {
+        columnCount,
+        columns,
+        maxHeight: Math.max(0, ...columns.map((column) => column.height)),
+        fillRatio: columns.reduce((sum, column) => sum + column.height, 0) / Math.max(1, columnCount * pageHeight)
+      };
+    }
+
+    function scoreProjectOverviewColumns(columns, pageHeight) {
+      const heights = columns.map((column) => column.height);
+      const usedColumns = heights.filter((height) => height > 0).length;
+      const maxHeight = Math.max(0, ...heights);
+      const totalHeight = heights.reduce((sum, height) => sum + height, 0);
+      const balance = heights.reduce((sum, height) => sum + Math.pow(maxHeight - height, 2), 0);
+      const fill = totalHeight / Math.max(1, columns.length * pageHeight);
+      return (usedColumns * 100000) + (fill * 1000) - balance - (maxHeight * 0.1);
+    }
+
+    function packProjectOverviewPageOptimized(items, pageHeight) {
+      const columnCount = 5;
+      const safeItems = items || [];
+      if (safeItems.length > 14) return packProjectOverviewPage(safeItems, pageHeight);
+      let bestColumns = null;
+      let bestScore = -Infinity;
+      const columns = Array.from({ length: columnCount }, () => ({ height: 0, items: [] }));
+      const orderedColumnIndexes = () => columns
+        .map((column, index) => ({ index, height: column.height }))
+        .sort((a, b) => a.height - b.height || a.index - b.index)
+        .map((entry) => entry.index);
+      const search = (itemIndex) => {
+        if (itemIndex >= safeItems.length) {
+          const maxHeight = Math.max(0, ...columns.map((column) => column.height));
+          if (maxHeight > pageHeight) return;
+          const score = scoreProjectOverviewColumns(columns, pageHeight);
+          if (score > bestScore) {
+            bestScore = score;
+            bestColumns = columns.map((column) => ({ height: column.height, items: [...column.items] }));
+          }
+          return;
+        }
+        const item = safeItems[itemIndex];
+        const triedHeights = new Set();
+        orderedColumnIndexes().forEach((columnIndex) => {
+          const column = columns[columnIndex];
+          const nextHeight = column.height + item.estimatedHeight;
+          if (nextHeight > pageHeight) return;
+          const heightKey = column.height.toFixed(3);
+          if (triedHeights.has(heightKey)) return;
+          triedHeights.add(heightKey);
+          column.items.push(item);
+          column.height = nextHeight;
+          search(itemIndex + 1);
+          column.height -= item.estimatedHeight;
+          column.items.pop();
+        });
+      };
+      search(0);
+      const columnsToUse = bestColumns || packProjectOverviewPage(safeItems, pageHeight).columns;
+      return {
+        columnCount,
+        columns: columnsToUse,
+        maxHeight: Math.max(0, ...columnsToUse.map((column) => column.height)),
+        fillRatio: columnsToUse.reduce((sum, column) => sum + column.height, 0) / Math.max(1, columnCount * pageHeight)
+      };
+    }
+
+    function chooseProjectOverviewPackingForPage(items) {
+      const pageHeight = 252;
+      return packProjectOverviewPageOptimized(items, pageHeight);
+    }
+
+    function canPackProjectOverviewItems(items) {
+      return chooseProjectOverviewPackingForPage(items).maxHeight <= 252;
+    }
+
+    function paginateProjectOverviewBoxes(projectItems) {
+      const items = (projectItems || []).map((item) => ({
+        ...item,
+        estimatedHeight: estimateProjectOverviewBoxHeight(item)
+      }));
+      const pages = [];
+      let index = 0;
+      while (index < items.length) {
+        let end = index + 1;
+        let bestItems = items.slice(index, end);
+        while (end < items.length) {
+          const candidate = items.slice(index, end + 1);
+          if (!canPackProjectOverviewItems(candidate)) break;
+          bestItems = candidate;
+          end += 1;
+        }
+        pages.push(chooseProjectOverviewPackingForPage(bestItems));
+        index += bestItems.length;
+      }
+      return pages;
+    }
+
+    function parseProjectOverviewPageNumbers(value) {
+      return String(value || '')
+        .split(',')
+        .map((part) => Number(String(part).trim().replace(/^#/, '')))
+        .filter((number) => Number.isFinite(number));
+    }
+
+    function buildManualProjectOverviewPages(projectItems) {
+      const byNumber = new Map();
+      (projectItems || []).forEach((item) => {
+        const number = Number(getProjectDisplayNumber(item.project, item.idx));
+        if (Number.isFinite(number)) byNumber.set(number, item);
+      });
+      const seen = new Set();
+      return getProjectOverviewPages()
+        .map((entry) => {
+          const items = parseProjectOverviewPageNumbers(entry)
+            .map((number) => byNumber.get(number))
+            .filter((item) => {
+              if (!item || seen.has(item.project.id)) return false;
+              seen.add(item.project.id);
+              return true;
+            })
+            .map((item) => ({ ...item, estimatedHeight: estimateProjectOverviewBoxHeight(item) }));
+          return items.length ? chooseProjectOverviewPackingForPage(items) : null;
+        })
+        .filter(Boolean);
+    }
+
+    function buildProjectListsOverviewPrintHtml() {
+      if (!state.data || !state.solution?.assignments) return '';
+      const projects = sortProjectsByNumber(state.data.projects);
+      const projectItems = projects.map((project) => {
+        const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
+        const rows = getSortedAssignmentRowsForProject(project.id);
+        return { project, idx, rows };
+      });
+      const pages = buildManualProjectOverviewPages(projectItems);
+      const renderProjectBox = ({ project, idx, rows }) => {
+        const sizeClass = rows.length > 45 ? 'huge' : (rows.length > 30 ? 'large' : '');
+        const studentRows = rows.length
+          ? rows.map((row) => `
+              <tr>
+                <td>${escapeHtml(getStudentDisplayClass(row.studentId))}</td>
+                <td>${escapeHtml(row.studentName)}</td>
+              </tr>
+            `).join('')
+          : '<tr><td>—</td><td>Keine zugeordneten Schüler</td></tr>';
+        return `
+          <section class="a3-project-box ${sizeClass}">
+            <div class="a3-project-box-head">
+              <div class="a3-project-box-title">#${escapeHtml(getProjectDisplayNumber(project, idx))} ${escapeHtml(project.name)}</div>
+            </div>
+            <table>
+              <thead><tr><th>Kl.</th><th>Name</th></tr></thead>
+              <tbody>${studentRows}</tbody>
+            </table>
+          </section>
+        `;
+      };
+      return `
+        <div class="a3-project-overview-head">
+          <h1 class="a3-project-overview-title">Projektzuordnung</h1>
+        </div>
+        ${pages.map((page) => `
+          <div class="a3-project-overview-page">
+            <div class="a3-project-overview-grid">
+              ${page.columns.map((column) => `
+                <div class="a3-project-column">${column.items.map(renderProjectBox).join('')}</div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    function printProjectListsOverview() {
+      if (!state.solution?.assignments) return;
+      els.printReport.className = 'print-report a3-project-overview';
+      els.printReport.style.setProperty('--export-name-font-scale', (getExportNameFontSize() / 6.8).toFixed(2));
+      els.printReport.innerHTML = buildProjectListsOverviewPrintHtml();
+      window.print();
+    }
+
     function prepareNamedPrintReport(kind) {
+      resetPrintReportMode();
       if (!state.data || !state.solution?.assignments) return;
       if (kind === 'projectLists') {
-        els.printReport.innerHTML = buildSectionPrintHtml('Projektlisten', buildProjectListSections());
+        els.printReport.innerHTML = buildSectionPrintHtml('Projektlisten', buildProjectListSections({ includeWished: shouldIncludeProjectPdfWishedColumn(), compact: true }), { includeTitle: false });
         return;
       }
       if (kind === 'classLists') {
-        els.printReport.innerHTML = buildSectionPrintHtml('Klassenlisten', buildClassListSections());
+        els.printReport.innerHTML = buildSectionPrintHtml('Klassenlisten', buildClassListSections({ compact: true }), { includeTitle: false });
         return;
       }
       if (kind === 'studentList') {
@@ -10623,6 +11081,7 @@
     }
 
     function preparePrintReport() {
+      resetPrintReportMode();
       if (!state.data) return;
       const summary = summaryAoA();
       const summaryHtml = `<div class="report-meta">` + summary.map(row => `<div><strong>${escapeHtml(row[0])}:</strong> ${escapeHtml(row[1])}</div>`).join('') + `</div>`;
@@ -10721,6 +11180,15 @@
       return { PDFLib: window.PDFLib, JSZip: window.JSZip };
     }
 
+    function getCompactPdfTableSizing(rowCount, pageHeight, margin, titleSize, headerGap) {
+      const usableHeight = pageHeight - margin * 2 - titleSize - headerGap - 18;
+      const neededRows = Math.max(1, Number(rowCount || 0) + 1);
+      const rowHeight = Math.max(8, Math.min(16, Math.floor(usableHeight / neededRows)));
+      const rowSize = getExportNameFontSize();
+      const headerSize = Math.min(9, rowSize + 0.8);
+      return { rowHeight, rowSize, headerSize };
+    }
+
     function sanitizeFilenamePart(value) {
       return String(value || '')
         .normalize('NFKD')
@@ -10794,13 +11262,14 @@
       const pageHeight = 841.89;
       const margin = 38;
       const titleSize = 16;
-      const headerSize = 10;
-      const rowSize = 9;
-      const rowHeight = 16;
       const headerGap = 10;
       const aoa = Array.isArray(section?.aoa) ? section.aoa : [['Keine Daten vorhanden']];
       const header = Array.isArray(aoa[0]) ? aoa[0] : ['Wert'];
       const rows = aoa.slice(1).map((row) => Array.isArray(row) ? row : [row]);
+      const sizing = section?.compactRows
+        ? getCompactPdfTableSizing(rows.length, pageHeight, margin, titleSize, headerGap)
+        : { rowHeight: 16, rowSize: 9, headerSize: 10 };
+      const { rowHeight, rowSize, headerSize } = sizing;
       const colCount = Math.max(1, header.length);
       const maxLens = new Array(colCount).fill(8);
       [header, ...rows].forEach((row) => {
@@ -11026,8 +11495,8 @@
     }
 
     function getNamedExportSections(kind) {
-      if (kind === 'projectLists') return buildProjectListSections();
-      if (kind === 'classLists') return buildClassListSections();
+      if (kind === 'projectLists') return buildProjectListSections({ includeWished: shouldIncludeProjectPdfWishedColumn(), compact: true });
+      if (kind === 'classLists') return buildClassListSections({ compact: true });
       return [];
     }
 
@@ -11851,6 +12320,7 @@
           selectedResultStudents: state.selectedResultStudents,
           openWishSections: state.openWishSections,
           analysisUi: state.analysisUi,
+          exportOptions: state.exportOptions,
           wishConsiderationThreshold: getWishConsiderationThreshold()
         })
       };
@@ -11918,6 +12388,7 @@
       state.resultDragStudentIds = [];
       state.openWishSections = Array.isArray(restored.openWishSections) ? restored.openWishSections : [];
       state.analysisUi = Object.assign({ projectSort: 'outsideChoice', classSort: 'wishRate', cohortMode: 'year', similarWishCount: 2 }, restored.analysisUi || {});
+      state.exportOptions = Object.assign({ projectPdfIncludeWished: true, nameFontSize: 9, projectOverviewPages: getDefaultProjectOverviewPages() }, restored.exportOptions || {});
       state.wishConsiderationThreshold = Math.max(0, Number(restored.wishConsiderationThreshold ?? ui.wishThreshold ?? 3) || 0);
       state.resultPointerDownStudentId = null;
       state.resultPointerDownWasSelected = false;
@@ -11965,6 +12436,9 @@
       if (els.analysisClassSort) els.analysisClassSort.value = state.analysisUi.classSort || 'wishRate';
       if (els.analysisCohortMode) els.analysisCohortMode.value = state.analysisUi.cohortMode || 'year';
       if (els.similarWishCountRange) els.similarWishCountRange.value = state.analysisUi.similarWishCount || 2;
+      if (els.projectPdfIncludeWished) els.projectPdfIncludeWished.checked = shouldIncludeProjectPdfWishedColumn();
+      syncExportNameFontScaleControls();
+      renderProjectOverviewPagePlanner();
 
       renderStageLog(state.solution?.stageResults || null);
       renderProjectResults(state.resultViewAssignments || null);
@@ -12079,7 +12553,50 @@
       els.exportWorkbookBtn.addEventListener('click', exportAllTablesWorkbook);
       els.printPdfBtn.addEventListener('click', printTablesPdf);
       if (els.exportProjectListsExcelBtn) els.exportProjectListsExcelBtn.addEventListener('click', exportProjectListsWorkbook);
+      if (els.projectPdfIncludeWished) {
+        els.projectPdfIncludeWished.checked = shouldIncludeProjectPdfWishedColumn();
+        els.projectPdfIncludeWished.addEventListener('change', (event) => {
+          state.exportOptions.projectPdfIncludeWished = !!event.target.checked;
+        });
+      }
+      syncExportNameFontScaleControls();
+      if (els.exportNameFontScale) {
+        els.exportNameFontScale.addEventListener('input', (event) => {
+          state.exportOptions.nameFontSize = Number(event.target.value) || 9;
+          syncExportNameFontScaleControls();
+        });
+      }
+      renderProjectOverviewPagePlanner();
+      if (els.projectOverviewPagesPlanner) {
+        els.projectOverviewPagesPlanner.addEventListener('input', (event) => {
+          const input = event.target.closest('[data-project-overview-page]');
+          if (!input) return;
+          const index = Number(input.dataset.projectOverviewPage);
+          const pages = getProjectOverviewPages();
+          pages[index] = input.value;
+          state.exportOptions.projectOverviewPages = pages;
+        });
+        els.projectOverviewPagesPlanner.addEventListener('click', (event) => {
+          const removeBtn = event.target.closest('[data-remove-project-overview-page]');
+          if (!removeBtn) return;
+          const index = Number(removeBtn.dataset.removeProjectOverviewPage);
+          const pages = getProjectOverviewPages();
+          if (pages.length <= 1) return;
+          pages.splice(index, 1);
+          state.exportOptions.projectOverviewPages = pages;
+          renderProjectOverviewPagePlanner();
+        });
+      }
+      if (els.addProjectOverviewPageBtn) {
+        els.addProjectOverviewPageBtn.addEventListener('click', () => {
+          const pages = getProjectOverviewPages();
+          pages.push('');
+          state.exportOptions.projectOverviewPages = pages;
+          renderProjectOverviewPagePlanner();
+        });
+      }
       if (els.printProjectListsBtn) els.printProjectListsBtn.addEventListener('click', () => printNamedReport('projectLists'));
+      if (els.printProjectListsOverviewBtn) els.printProjectListsOverviewBtn.addEventListener('click', printProjectListsOverview);
       if (els.downloadProjectListPdfsBtn) els.downloadProjectListPdfsBtn.addEventListener('click', () => downloadNamedSectionPdfs('projectLists'));
       if (els.zipProjectListPdfsBtn) els.zipProjectListPdfsBtn.addEventListener('click', () => zipNamedSectionPdfs('projectLists'));
       if (els.exportClassListsExcelBtn) els.exportClassListsExcelBtn.addEventListener('click', exportClassListsWorkbook);
