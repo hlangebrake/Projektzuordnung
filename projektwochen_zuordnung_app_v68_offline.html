@@ -2369,6 +2369,40 @@
             <div class="button-row">
               <button id="applyCapacitiesBtn" class="secondary">Kapazität auf alle Projekte anwenden</button>
               <button id="applyMinFillBtn" class="secondary">Mindestbelegung auf alle anwenden</button>
+              <button id="toggleAddProjectFormBtn" class="ghost" type="button">Projekt hinzufügen</button>
+            </div>
+            <div id="addProjectForm" class="live-status-box" hidden>
+              <div class="grid2">
+                <div>
+                  <label for="newProjectNumber">Projektnummer</label>
+                  <input id="newProjectNumber" type="number" min="1" step="1" />
+                </div>
+                <div>
+                  <label for="newProjectName">Projektname</label>
+                  <input id="newProjectName" type="text" placeholder="Neues Projekt" />
+                </div>
+                <div>
+                  <label for="newProjectCapacity">Kapazität</label>
+                  <input id="newProjectCapacity" type="number" min="0" step="1" value="24" />
+                </div>
+                <div>
+                  <label for="newProjectMinFill">Mindestbelegung</label>
+                  <input id="newProjectMinFill" type="number" min="0" step="1" value="0" />
+                </div>
+                <div>
+                  <label for="newProjectAllowedYears">Jahrgänge</label>
+                  <input id="newProjectAllowedYears" type="text" placeholder="z.B. 5-7, 9" />
+                </div>
+                <div>
+                  <label>&nbsp;</label>
+                  <label class="result-display-option"><input id="newProjectExclusive" type="checkbox" /> Exklusiv</label>
+                  <label class="result-display-option"><input id="newProjectNoIgnored" type="checkbox" /> Keine ignorierten</label>
+                </div>
+              </div>
+              <div class="button-row">
+                <button id="addProjectBtn" type="button">Projekt anlegen</button>
+                <button id="cancelAddProjectBtn" class="secondary" type="button">Abbrechen</button>
+              </div>
             </div>
             <div class="inline-note">
               Die Projekttabelle bildet die Datengrundlage für das Modell. Änderungen hier verändern nur die Eingabedaten, nicht die Solverlogik.
@@ -2593,7 +2627,7 @@
                 <button id="downloadProjectListPdfsBtn" class="ghost" disabled>Einzel-PDFs herunterladen</button>
                 <button id="zipProjectListPdfsBtn" class="ghost" disabled>PDF-ZIP herunterladen</button>
               </div>
-              <label class="result-display-option"><input type="checkbox" id="projectPdfIncludeWished" checked /> PDF-Spalte „gewünscht“ ausgeben</label>
+              <label class="result-display-option"><input type="checkbox" id="projectPdfIncludeWished" checked /> Spalte „gewünscht“ ausgeben</label>
               <div class="export-group-title" style="margin-top:4px">A3-Gesamt-Druck Seiten</div>
               <div id="projectOverviewPagesPlanner" class="a3-page-planner"></div>
               <div class="button-row">
@@ -5084,6 +5118,94 @@
       renderIgnoredStudentsList();
     }
 
+    function ensureProjectDataForManualEdit() {
+      if (state.data) return;
+      state.data = {
+        sourceSheet: 'Manuell angelegte Projektdaten',
+        students: [],
+        projects: [],
+        choiceMap: new Map(),
+        classMap: new Map(),
+        yearMap: new Map(),
+        classGroups: [],
+        yearGroups: [],
+        classCoverage: { matchedCount: 0, unmatchedCount: 0, importedOnlyCount: 0 },
+        projectInfoCoverage: { matchedCount: 0, unmatchedCount: 0 }
+      };
+    }
+
+    function getNextProjectNumber() {
+      const numbers = (state.data?.projects || [])
+        .map((project, idx) => Number.isFinite(Number(project.number)) ? Number(project.number) : idx + 1)
+        .filter((value) => Number.isFinite(value));
+      return numbers.length ? Math.max(...numbers) + 1 : 1;
+    }
+
+    function getNextProjectId() {
+      const existingIds = new Set((state.data?.projects || []).map((project) => project.id));
+      let index = state.data?.projects?.length || 0;
+      while (existingIds.has(`P${index}`)) index += 1;
+      return `P${index}`;
+    }
+
+    function syncNewProjectDefaults() {
+      if (els.newProjectNumber) els.newProjectNumber.value = String(getNextProjectNumber());
+      if (els.newProjectCapacity) els.newProjectCapacity.value = String(asInt(els.defaultCapacity?.value, 24));
+      if (els.newProjectMinFill) els.newProjectMinFill.value = String(asInt(els.defaultMinFill?.value, 0));
+    }
+
+    function resetAddProjectForm() {
+      syncNewProjectDefaults();
+      if (els.newProjectName) els.newProjectName.value = '';
+      if (els.newProjectAllowedYears) els.newProjectAllowedYears.value = '';
+      if (els.newProjectExclusive) els.newProjectExclusive.checked = false;
+      if (els.newProjectNoIgnored) els.newProjectNoIgnored.checked = false;
+    }
+
+    function handleProjectDataChanged(options = {}) {
+      const preserveExistingSolution = !!options.preserveExistingSolution;
+      if (!preserveExistingSolution) {
+        clearResults();
+      } else if (state.solution?.assignments) {
+        renderProjectResults(state.solution.assignments);
+        renderStudentResults(state.solution.assignments);
+        renderAnalysis(state.solution.assignments);
+      }
+      refreshSummary();
+      renderDataSourcesStatus();
+      preparePrintReport();
+      manageExportButtons();
+    }
+
+    function addManualProject() {
+      ensureProjectDataForManualEdit();
+      const projectNumber = asInt(els.newProjectNumber?.value, getNextProjectNumber());
+      const projectName = normalizeName(els.newProjectName?.value || '') || `Projekt ${projectNumber}`;
+      const project = {
+        id: getNextProjectId(),
+        number: projectNumber,
+        shortName: projectName,
+        name: projectName,
+        choosersCount: 0,
+        statedCount: 0,
+        capacity: asInt(els.newProjectCapacity?.value, asInt(els.defaultCapacity?.value, 24)),
+        minFill: asInt(els.newProjectMinFill?.value, asInt(els.defaultMinFill?.value, 0)),
+        allowedYears: parseAllowedYearsSpec(els.newProjectAllowedYears?.value || ''),
+        exclusive: !!els.newProjectExclusive?.checked,
+        noIgnored: !!els.newProjectNoIgnored?.checked
+      };
+      state.data.projects.push(project);
+      const previousCoverage = state.data.projectInfoCoverage || { matchedCount: 0, unmatchedCount: 0 };
+      state.data.projectInfoCoverage = {
+        matchedCount: previousCoverage.matchedCount || 0,
+        unmatchedCount: (previousCoverage.unmatchedCount || 0) + 1
+      };
+      resetAddProjectForm();
+      if (els.addProjectForm) els.addProjectForm.hidden = true;
+      renderProjectTable();
+      handleProjectDataChanged({ preserveExistingSolution: true });
+    }
+
     function renderProjectTable() {
       if (!state.data) {
         els.projectConfigWrap.innerHTML = '<div class="muted small" style="padding:12px">Keine Projektdaten geladen.</div>';
@@ -5092,9 +5214,9 @@
       const rows = state.data.projects.map((p, index) => `
         <tr>
           <td class="nowrap">${Number.isFinite(Number(p.number)) ? Number(p.number) : index + 1}</td>
-          <td>${escapeHtml(p.name)}</td>
+          <td><input data-project-id="${p.id}" data-field="name" type="text" value="${escapeHtml(p.name)}" /></td>
           <td>${p.choosersCount}</td>
-          <td>${escapeHtml(formatAllowedYears(p.allowedYears || []))}</td>
+          <td><input data-project-id="${p.id}" data-field="allowedYears" type="text" value="${escapeHtml((p.allowedYears || []).join(', '))}" placeholder="z.B. 5-7, 9" /></td>
           <td><input data-project-id="${p.id}" data-field="capacity" type="number" min="0" step="1" value="${p.capacity}" /></td>
           <td><input data-project-id="${p.id}" data-field="minFill" type="number" min="0" step="1" value="${p.minFill}" /></td>
           <td><input data-project-id="${p.id}" data-field="exclusive" type="checkbox" ${p.exclusive ? 'checked' : ''} /></td>
@@ -5116,7 +5238,17 @@
           const project = state.data.projects.find(p => p.id === id);
           if (!project) return;
           if (field === 'exclusive' || field === 'noIgnored') project[field] = !!e.target.checked;
+          else if (field === 'name') {
+            const nextName = normalizeName(e.target.value || '') || project.name;
+            project.name = nextName;
+            project.shortName = nextName;
+            e.target.value = nextName;
+          } else if (field === 'allowedYears') {
+            project.allowedYears = parseAllowedYearsSpec(e.target.value || '');
+            e.target.value = (project.allowedYears || []).join(', ');
+          }
           else project[field] = asInt(e.target.value, 0);
+          handleProjectDataChanged();
         });
       });
     }
@@ -10734,7 +10866,7 @@
         const header = includeWished ? ['Klasse', 'Name', 'gewünscht'] : ['Klasse', 'Name'];
         const emptyRow = includeWished ? ['—', 'Keine zugeordneten Schüler', ''] : ['—', 'Keine zugeordneten Schüler'];
         return {
-          sheetName: `P${getProjectDisplayNumber(project, idx)}`,
+          sheetName: `P${getProjectDisplayNumber(project, idx)} ${project.name}`,
           title: `Projekt #${getProjectDisplayNumber(project, idx)} – ${project.name}`,
           aoa: [header, ...(rows.length ? rows : [emptyRow])],
           compactRows: compact,
@@ -11146,7 +11278,7 @@
     function exportProjectListsWorkbook() {
       if (!state.solution?.assignments) return;
       const wb = XLSX.utils.book_new();
-      buildProjectListSections().forEach((section) => addAoASheet(wb, section.sheetName, section.aoa));
+      buildProjectListSections({ includeWished: shouldIncludeProjectPdfWishedColumn() }).forEach((section) => addAoASheet(wb, section.sheetName, section.aoa));
       XLSX.writeFile(wb, 'projektlisten.xlsx');
     }
 
@@ -12539,13 +12671,33 @@
         const cap = asInt(els.defaultCapacity.value, 24);
         state.data.projects.forEach((p) => { p.capacity = cap; });
         renderProjectTable();
+        handleProjectDataChanged();
       });
       els.applyMinFillBtn.addEventListener('click', () => {
         if (!state.data) return;
         const mf = asInt(els.defaultMinFill.value, 0);
         state.data.projects.forEach((p) => { p.minFill = mf; });
         renderProjectTable();
+        handleProjectDataChanged();
       });
+      if (els.toggleAddProjectFormBtn) {
+        els.toggleAddProjectFormBtn.addEventListener('click', () => {
+          if (!els.addProjectForm) return;
+          const willOpen = els.addProjectForm.hidden;
+          els.addProjectForm.hidden = !willOpen;
+          if (willOpen) {
+            syncNewProjectDefaults();
+            els.newProjectName?.focus();
+          }
+        });
+      }
+      if (els.addProjectBtn) els.addProjectBtn.addEventListener('click', addManualProject);
+      if (els.cancelAddProjectBtn) {
+        els.cancelAddProjectBtn.addEventListener('click', () => {
+          if (els.addProjectForm) els.addProjectForm.hidden = true;
+          resetAddProjectForm();
+        });
+      }
       els.addFriendBtn.addEventListener('click', () => addPair('friends', els.friendA.value, els.friendB.value));
       els.addConflictBtn.addEventListener('click', () => addPair('conflicts', els.conflictA.value, els.conflictB.value));
       els.solveBtn.addEventListener('click', runOptimization);
