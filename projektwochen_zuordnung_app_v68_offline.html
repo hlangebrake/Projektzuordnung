@@ -1280,6 +1280,67 @@
       font-size: 11px;
       color: var(--muted);
     }
+    .assignment-canvas-shell {
+      display: grid;
+      grid-template-rows: auto minmax(520px, calc(100vh - 230px));
+      gap: 12px;
+      min-height: 660px;
+    }
+    .assignment-canvas-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .assignment-canvas-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .assignment-toggle {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+    }
+    .assignment-toggle.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: #1d4ed8;
+      box-shadow: inset 0 0 0 1px rgba(37,99,235,0.12);
+    }
+    .assignment-canvas-controls input[type="range"] {
+      width: 180px;
+    }
+    .assignment-canvas-wrap {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #eef3f8;
+      overflow: hidden;
+      position: relative;
+      min-height: 520px;
+      cursor: grab;
+    }
+    .assignment-canvas-wrap.dragging-student {
+      cursor: grabbing;
+    }
+    #assignmentCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    .assignment-canvas-empty {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+      pointer-events: none;
+    }
     .detail-close {
       padding: 8px 10px;
       font-size: 12px;
@@ -2288,6 +2349,10 @@
           <span class="nav-icon">📋</span>
           <span class="nav-label">Ergebnis</span>
         </button>
+        <button class="nav-tab" type="button" data-target="tabAssignment">
+          <span class="nav-icon">↔</span>
+          <span class="nav-label">Zuordnung</span>
+        </button>
         <button class="nav-tab" type="button" data-target="tabAnalysis">
           <span class="nav-icon">📊</span>
           <span class="nav-label">Analyse</span>
@@ -2672,6 +2737,41 @@
         </div>
       </section>
 
+      <section id="tabAssignment" class="tab-panel">
+        <div class="tab-header">
+          <div>
+            <h2>Zuordnung</h2>
+            <p class="muted">Alle Projektlisten als kompakte Arbeitsfläche. Ziehe Schüler zwischen Projekten, zoome mit dem Mausrad und klicke auf Schüler, um Klassenkameraden und Wunschprojekte sichtbar zu machen.</p>
+          </div>
+        </div>
+
+        <div class="panel-grid">
+          <section class="panel panel-span-2">
+            <div class="assignment-canvas-shell">
+              <div class="assignment-canvas-toolbar">
+                <div>
+                  <h3>Projektlisten</h3>
+                  <p class="muted small">Klick auf einen Schüler markiert Schüler derselben Klasse. Wunschprojekte des angeklickten Schülers werden kräftig hervorgehoben.</p>
+                </div>
+                <div class="assignment-canvas-controls">
+                  <button id="assignmentToggleSameClassBtn" class="ghost assignment-toggle active" type="button" aria-pressed="true">gleiche Klasse</button>
+                  <button id="assignmentToggleSameWishesBtn" class="ghost assignment-toggle" type="button" aria-pressed="false">gleiche Wünsche</button>
+                  <button id="assignmentZoomOutBtn" class="ghost" type="button">−</button>
+                  <input id="assignmentZoomSlider" type="range" min="35" max="220" step="5" value="100" aria-label="Zoom" />
+                  <button id="assignmentZoomInBtn" class="ghost" type="button">+</button>
+                  <button id="assignmentResetViewBtn" class="secondary" type="button">Ansicht zurücksetzen</button>
+                  <span id="assignmentZoomValue" class="export-slider-value">100%</span>
+                </div>
+              </div>
+              <div id="assignmentCanvasWrap" class="assignment-canvas-wrap">
+                <canvas id="assignmentCanvas"></canvas>
+                <div id="assignmentCanvasEmpty" class="assignment-canvas-empty">Noch kein Ergebnis vorhanden.</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section id="tabAnalysis" class="tab-panel">
         <div class="tab-header">
           <div>
@@ -2759,6 +2859,20 @@
         query: ''
       },
       selectedResultStudents: [],
+      assignmentCanvas: {
+        zoom: 1,
+        panX: 18,
+        panY: 18,
+        layout: null,
+        projectHits: [],
+        projectHeaderHits: [],
+        studentHits: [],
+        focusStudentId: null,
+        focusProjectId: null,
+        highlightSameClass: true,
+        highlightSameWishes: false,
+        drag: null
+      },
       resultDragStudentIds: [],
       openWishSections: [],
       analysisUi: {
@@ -8070,12 +8184,14 @@
     function setResultSelection(studentIds) {
       state.selectedResultStudents = [...new Set((studentIds || []).filter(Boolean))];
       if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+      renderAssignmentCanvasView();
     }
 
     function clearResultSelection() {
       if (!(state.selectedResultStudents || []).length) return;
       state.selectedResultStudents = [];
       if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+      renderAssignmentCanvasView();
     }
 
     function ensureResultProjectOpen(projectId) {
@@ -8110,6 +8226,7 @@
       renderProjectResults(nextAssignments);
       renderStudentResults(nextAssignments);
       renderAnalysis(nextAssignments);
+      renderAssignmentCanvasView();
       preparePrintReport();
       manageExportButtons();
       return true;
@@ -8512,6 +8629,458 @@
       });
     }
 
+    function ensureAssignmentCanvasState() {
+      if (!state.assignmentCanvas) {
+        state.assignmentCanvas = {
+          zoom: 1,
+          panX: 18,
+          panY: 18,
+          layout: null,
+          projectHits: [],
+          projectHeaderHits: [],
+          studentHits: [],
+          focusStudentId: null,
+          focusProjectId: null,
+          highlightSameClass: true,
+          highlightSameWishes: false,
+          drag: null
+        };
+      }
+      if (state.assignmentCanvas.highlightSameClass === undefined) state.assignmentCanvas.highlightSameClass = true;
+      if (state.assignmentCanvas.highlightSameWishes === undefined) state.assignmentCanvas.highlightSameWishes = false;
+      return state.assignmentCanvas;
+    }
+
+    function clampAssignmentZoom(value) {
+      return Math.max(0.35, Math.min(2.2, Number(value) || 1));
+    }
+
+    function getAssignmentCanvasPoint(event) {
+      const canvas = els.assignmentCanvas;
+      const rect = canvas.getBoundingClientRect();
+      const canvasState = ensureAssignmentCanvasState();
+      return {
+        screenX: event.clientX - rect.left,
+        screenY: event.clientY - rect.top,
+        x: (event.clientX - rect.left - canvasState.panX) / canvasState.zoom,
+        y: (event.clientY - rect.top - canvasState.panY) / canvasState.zoom
+      };
+    }
+
+    function buildAssignmentCanvasLayout(assignments) {
+      if (!state.data || !assignments?.byStudent?.length) return null;
+      const columnCount = 10;
+      const columnWidth = 185;
+      const gap = 8;
+      const headerHeight = 50;
+      const rowHeight = 17;
+      const pad = 8;
+      const columns = Array.from({ length: columnCount }, () => ({ x: 0, y: 0, height: 0 }));
+      const projects = sortProjectsByNumber(state.data.projects).map((project) => {
+        const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
+        const rows = sortStudentRowsForProjectDisplay((assignments.byStudent || [])
+          .filter((row) => row.projectId === project.id)
+          .filter((row) => studentMatchesAssignmentCanvasFilters(row.studentId)));
+        const height = headerHeight + Math.max(1, rows.length) * rowHeight + pad;
+        const column = columns.reduce((best, candidate) => candidate.height < best.height ? candidate : best, columns[0]);
+        const columnIndex = columns.indexOf(column);
+        const x = columnIndex * (columnWidth + gap);
+        const y = column.height;
+        column.height += height + gap;
+        return { project, idx, rows, x, y, width: columnWidth, height, headerHeight, rowHeight, pad };
+      });
+      const width = columnCount * columnWidth + (columnCount - 1) * gap;
+      const height = Math.max(520, ...columns.map((column) => column.height));
+      return { projects, width, height, columnWidth, gap };
+    }
+
+    function resizeAssignmentCanvas() {
+      if (!els.assignmentCanvas || !els.assignmentCanvasWrap) return false;
+      const rect = els.assignmentCanvasWrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(320, Math.floor(rect.width));
+      const height = Math.max(420, Math.floor(rect.height));
+      const nextWidth = Math.floor(width * dpr);
+      const nextHeight = Math.floor(height * dpr);
+      const changed = els.assignmentCanvas.width !== nextWidth || els.assignmentCanvas.height !== nextHeight;
+      if (changed) {
+        els.assignmentCanvas.width = nextWidth;
+        els.assignmentCanvas.height = nextHeight;
+      }
+      els.assignmentCanvas.style.width = `${width}px`;
+      els.assignmentCanvas.style.height = `${height}px`;
+      return changed;
+    }
+
+    function drawRoundedRect(ctx, x, y, width, height, radius) {
+      const r = Math.min(radius, width / 2, height / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + width - r, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+      ctx.lineTo(x + width, y + height - r);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      ctx.lineTo(x + r, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    function drawAssignmentCanvasText(ctx, text, x, y, maxWidth) {
+      const raw = String(text || '');
+      if (ctx.measureText(raw).width <= maxWidth) {
+        ctx.fillText(raw, x, y);
+        return;
+      }
+      let value = raw;
+      while (value.length > 1 && ctx.measureText(`${value}...`).width > maxWidth) {
+        value = value.slice(0, -1);
+      }
+      ctx.fillText(`${value}...`, x, y);
+    }
+
+    function getAssignmentWishSignature(studentId) {
+      return [...(state.data?.choiceMap?.get(studentId) || new Set())].sort().join('|');
+    }
+
+    function studentsShareAnyAssignmentWish(aStudentId, bStudentId) {
+      const aWishes = state.data?.choiceMap?.get(aStudentId) || new Set();
+      const bWishes = state.data?.choiceMap?.get(bStudentId) || new Set();
+      if (!aWishes.size || !bWishes.size) return false;
+      for (const projectId of aWishes) {
+        if (bWishes.has(projectId)) return true;
+      }
+      return false;
+    }
+
+    function studentMatchesAssignmentCanvasFilters(studentId) {
+      const canvasState = ensureAssignmentCanvasState();
+      const focusStudentId = canvasState.focusStudentId;
+      if (!focusStudentId || studentId === focusStudentId) return true;
+      if (canvasState.highlightSameClass) {
+        const focusClass = getStudentDisplayClass(focusStudentId);
+        if (!focusClass || focusClass === '—' || getStudentDisplayClass(studentId) !== focusClass) return false;
+      }
+      if (canvasState.highlightSameWishes) {
+        if (!studentsShareAnyAssignmentWish(focusStudentId, studentId)) return false;
+      }
+      return true;
+    }
+
+    function syncAssignmentCanvasControls() {
+      const canvasState = ensureAssignmentCanvasState();
+      if (els.assignmentToggleSameClassBtn) {
+        els.assignmentToggleSameClassBtn.classList.toggle('active', !!canvasState.highlightSameClass);
+        els.assignmentToggleSameClassBtn.setAttribute('aria-pressed', canvasState.highlightSameClass ? 'true' : 'false');
+      }
+      if (els.assignmentToggleSameWishesBtn) {
+        els.assignmentToggleSameWishesBtn.classList.toggle('active', !!canvasState.highlightSameWishes);
+        els.assignmentToggleSameWishesBtn.setAttribute('aria-pressed', canvasState.highlightSameWishes ? 'true' : 'false');
+      }
+    }
+
+    function renderAssignmentCanvasView() {
+      if (!els.assignmentCanvas || !els.assignmentCanvasWrap) return;
+      const assignments = state.resultViewAssignments || state.solution?.assignments || null;
+      const canvasState = ensureAssignmentCanvasState();
+      syncAssignmentCanvasControls();
+      resizeAssignmentCanvas();
+      const canvas = els.assignmentCanvas;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const cssWidth = canvas.width / dpr;
+      const cssHeight = canvas.height / dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
+      ctx.fillStyle = '#eef3f8';
+      ctx.fillRect(0, 0, cssWidth, cssHeight);
+      if (els.assignmentCanvasEmpty) {
+        els.assignmentCanvasEmpty.style.display = assignments?.byStudent?.length ? 'none' : 'grid';
+      }
+      if (!assignments?.byStudent?.length || !state.data) {
+        canvasState.layout = null;
+        canvasState.projectHits = [];
+        canvasState.projectHeaderHits = [];
+        canvasState.studentHits = [];
+        return;
+      }
+
+      const layout = buildAssignmentCanvasLayout(assignments);
+      canvasState.layout = layout;
+      canvasState.projectHits = [];
+      canvasState.projectHeaderHits = [];
+      canvasState.studentHits = [];
+      const focusStudentId = canvasState.focusStudentId;
+      const focusProjectId = canvasState.focusProjectId;
+      const focusClass = focusStudentId ? getStudentDisplayClass(focusStudentId) : '';
+      const focusWishes = new Set(focusStudentId ? [...(state.data.choiceMap?.get(focusStudentId) || [])] : []);
+      const focusedProjectChoiceStudentIds = new Set();
+      if (focusProjectId) {
+        (state.data.students || []).forEach((student) => {
+          if ((state.data.choiceMap?.get(student.id) || new Set()).has(focusProjectId)) focusedProjectChoiceStudentIds.add(student.id);
+        });
+      }
+      const dropProjectId = canvasState.drag?.type === 'student' ? canvasState.drag.dropProjectId : '';
+
+      ctx.save();
+      ctx.translate(canvasState.panX, canvasState.panY);
+      ctx.scale(canvasState.zoom, canvasState.zoom);
+      ctx.fillStyle = '#d8deea';
+      ctx.fillRect(-24, -24, layout.width + 48, layout.height + 48);
+
+      layout.projects.forEach((entry) => {
+        const { project, idx, rows, x, y, width, height, headerHeight, rowHeight, pad } = entry;
+        const metrics = getProjectResultMetrics(project, assignments, idx);
+        const isWishProject = focusWishes.has(project.id);
+        const isFocusedProject = focusProjectId === project.id;
+        const isDropTarget = dropProjectId === project.id;
+        const border = isDropTarget ? '#059669' : (isWishProject || isFocusedProject ? '#f97316' : (metrics.overCapacity ? '#dc2626' : '#94a3b8'));
+        const bg = isDropTarget ? '#dcfce7' : ((isWishProject || isFocusedProject) ? '#fff7ed' : '#ffffff');
+        drawRoundedRect(ctx, x, y, width, height, 5);
+        ctx.fillStyle = bg;
+        ctx.fill();
+        ctx.lineWidth = isWishProject || isDropTarget ? 2.4 : 0.8;
+        ctx.strokeStyle = border;
+        ctx.stroke();
+
+        ctx.fillStyle = (isWishProject || isFocusedProject) ? '#fed7aa' : '#e0f2fe';
+        ctx.fillRect(x, y, width, headerHeight);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(x, y + headerHeight);
+        ctx.lineTo(x + width, y + headerHeight);
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '700 11px Arial, sans-serif';
+        drawAssignmentCanvasText(ctx, `#${getProjectDisplayNumber(project, idx)} ${project.name}`, x + pad, y + 15, width - pad * 2);
+        ctx.font = '10px Arial, sans-serif';
+        ctx.fillStyle = '#475569';
+        ctx.fillText(`${rows.length}/${project.capacity || '-'} · min ${project.minFill || 0}`, x + pad, y + 31);
+        if (isWishProject) {
+          ctx.fillStyle = '#9a3412';
+          ctx.font = '700 10px Arial, sans-serif';
+          ctx.fillText('Wunschprojekt', x + width - 76, y + 31);
+        } else if (isFocusedProject) {
+          ctx.fillStyle = '#9a3412';
+          ctx.font = '700 10px Arial, sans-serif';
+          ctx.fillText('gewählt von', x + width - 68, y + 31);
+        }
+
+        canvasState.projectHits.push({ projectId: project.id, x, y, width, height });
+        canvasState.projectHeaderHits.push({ projectId: project.id, x, y, width, height: headerHeight });
+        const students = rows.length ? rows : [];
+        if (!students.length) {
+          ctx.fillStyle = '#6b7280';
+          ctx.font = '10px Arial, sans-serif';
+          ctx.fillText('Keine Schüler', x + pad, y + headerHeight + 14);
+        }
+        const classBandIndex = new Map();
+        students.forEach((row) => {
+          const className = getStudentDisplayClass(row.studentId);
+          const key = className && className !== '—' ? className : 'ohne Klasse';
+          if (!classBandIndex.has(key)) classBandIndex.set(key, classBandIndex.size);
+        });
+        students.forEach((row, rowIndex) => {
+          const rowY = y + headerHeight + rowIndex * rowHeight;
+          const className = getStudentDisplayClass(row.studentId);
+          const classKey = className && className !== '—' ? className : 'ohne Klasse';
+          const classBand = classBandIndex.get(classKey) || 0;
+          const isFocus = row.studentId === focusStudentId;
+          const isClassmate = !!canvasState.highlightSameClass && !!focusClass && focusClass !== '—' && className === focusClass;
+          const hasSameWishes = !!canvasState.highlightSameWishes && row.studentId !== focusStudentId && studentsShareAnyAssignmentWish(focusStudentId, row.studentId);
+          const choseFocusedProject = focusedProjectChoiceStudentIds.has(row.studentId);
+          const studentWishes = state.data.choiceMap?.get(row.studentId) || new Set();
+          const outsideChoice = !studentWishes.has(project.id) && !isStudentWishIgnored(row.studentId, state.data);
+          ctx.fillStyle = classBand % 2 === 0 ? '#f8fafc' : '#f1f5f9';
+          ctx.fillRect(x + 1, rowY, width - 2, rowHeight);
+          if (isFocus || isClassmate || hasSameWishes || choseFocusedProject) {
+            ctx.fillStyle = isFocus ? '#bfdbfe' : (hasSameWishes ? '#e0e7ff' : (choseFocusedProject ? '#ffedd5' : '#dcfce7'));
+            ctx.fillRect(x + 1, rowY, width - 2, rowHeight);
+          } else if (outsideChoice) {
+            ctx.fillStyle = '#fef2f2';
+            ctx.fillRect(x + 1, rowY, width - 2, rowHeight);
+          }
+          ctx.fillStyle = classBand % 2 === 0 ? '#cbd5e1' : '#dbeafe';
+          ctx.fillRect(x + 1, rowY, 3, rowHeight);
+          ctx.strokeStyle = '#e5e7eb';
+          ctx.lineWidth = 0.35;
+          ctx.beginPath();
+          ctx.moveTo(x + pad, rowY);
+          ctx.lineTo(x + width - pad, rowY);
+          ctx.stroke();
+          ctx.fillStyle = isFocus ? '#1d4ed8' : (hasSameWishes ? '#4338ca' : (isClassmate ? '#166534' : (choseFocusedProject ? '#9a3412' : '#111827')));
+          ctx.font = isFocus || hasSameWishes || isClassmate || choseFocusedProject ? '700 10px Arial, sans-serif' : '10px Arial, sans-serif';
+          drawAssignmentCanvasText(ctx, row.studentName, x + pad, rowY + 12, width - 50);
+          ctx.fillStyle = '#64748b';
+          ctx.font = '9px Arial, sans-serif';
+          drawAssignmentCanvasText(ctx, className, x + width - 42, rowY + 12, 34);
+          canvasState.studentHits.push({
+            studentId: row.studentId,
+            projectId: project.id,
+            studentName: row.studentName,
+            x,
+            y: rowY,
+            width,
+            height: rowHeight
+          });
+        });
+      });
+
+      if (canvasState.drag?.type === 'student') {
+        const drag = canvasState.drag;
+        drawRoundedRect(ctx, drag.x - 76, drag.y - 12, 152, 24, 5);
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.92)';
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 10px Arial, sans-serif';
+        drawAssignmentCanvasText(ctx, drag.studentName, drag.x - 68, drag.y + 4, 136);
+      }
+
+      ctx.restore();
+
+      if (els.assignmentZoomSlider) els.assignmentZoomSlider.value = String(Math.round(canvasState.zoom * 100));
+      if (els.assignmentZoomValue) els.assignmentZoomValue.textContent = `${Math.round(canvasState.zoom * 100)}%`;
+    }
+
+    function hitAssignmentStudent(point) {
+      const hits = ensureAssignmentCanvasState().studentHits || [];
+      for (let i = hits.length - 1; i >= 0; i -= 1) {
+        const hit = hits[i];
+        if (point.x >= hit.x && point.x <= hit.x + hit.width && point.y >= hit.y && point.y <= hit.y + hit.height) return hit;
+      }
+      return null;
+    }
+
+    function hitAssignmentProject(point) {
+      const hits = ensureAssignmentCanvasState().projectHits || [];
+      for (let i = hits.length - 1; i >= 0; i -= 1) {
+        const hit = hits[i];
+        if (point.x >= hit.x && point.x <= hit.x + hit.width && point.y >= hit.y && point.y <= hit.y + hit.height) return hit;
+      }
+      return null;
+    }
+
+    function updateAssignmentCanvasTooltip(event) {
+      if (!els.assignmentCanvas || !state.data) return;
+      const point = getAssignmentCanvasPoint(event);
+      const projectHit = hitAssignmentProject(point);
+      const project = projectHit ? (state.data.projects || []).find((entry) => entry.id === projectHit.projectId) : null;
+      els.assignmentCanvas.title = project?.name || '';
+    }
+
+    function hitAssignmentProjectHeader(point) {
+      const hits = ensureAssignmentCanvasState().projectHeaderHits || [];
+      for (let i = hits.length - 1; i >= 0; i -= 1) {
+        const hit = hits[i];
+        if (point.x >= hit.x && point.x <= hit.x + hit.width && point.y >= hit.y && point.y <= hit.y + hit.height) return hit;
+      }
+      return null;
+    }
+
+    function setAssignmentZoom(nextZoom, anchor) {
+      const canvasState = ensureAssignmentCanvasState();
+      const oldZoom = canvasState.zoom;
+      const zoom = clampAssignmentZoom(nextZoom);
+      if (anchor) {
+        const worldX = (anchor.screenX - canvasState.panX) / oldZoom;
+        const worldY = (anchor.screenY - canvasState.panY) / oldZoom;
+        canvasState.panX = anchor.screenX - worldX * zoom;
+        canvasState.panY = anchor.screenY - worldY * zoom;
+      }
+      canvasState.zoom = zoom;
+      renderAssignmentCanvasView();
+    }
+
+    function resetAssignmentCanvasView() {
+      const canvasState = ensureAssignmentCanvasState();
+      canvasState.zoom = 1;
+      canvasState.panX = 18;
+      canvasState.panY = 18;
+      renderAssignmentCanvasView();
+    }
+
+    let assignmentCanvasAutoPanFrame = null;
+
+    function stopAssignmentCanvasAutoPan() {
+      if (assignmentCanvasAutoPanFrame) {
+        cancelAnimationFrame(assignmentCanvasAutoPanFrame);
+        assignmentCanvasAutoPanFrame = null;
+      }
+    }
+
+    function updateAssignmentDragPositionFromClient(clientX, clientY) {
+      const canvasState = ensureAssignmentCanvasState();
+      const drag = canvasState.drag;
+      if (!drag || drag.type !== 'student' || !els.assignmentCanvas) return;
+      const rect = els.assignmentCanvas.getBoundingClientRect();
+      drag.lastClientX = clientX;
+      drag.lastClientY = clientY;
+      drag.x = (clientX - rect.left - canvasState.panX) / canvasState.zoom;
+      drag.y = (clientY - rect.top - canvasState.panY) / canvasState.zoom;
+      const projectHit = hitAssignmentProject({ x: drag.x, y: drag.y });
+      drag.dropProjectId = projectHit && isDropProjectEligible(projectHit.projectId) ? projectHit.projectId : '';
+    }
+
+    function getAssignmentCanvasAutoPanDelta(clientX, clientY) {
+      if (!els.assignmentCanvasWrap) return { x: 0, y: 0 };
+      const rect = els.assignmentCanvasWrap.getBoundingClientRect();
+      const threshold = 96;
+      const maxSpeed = 28;
+      const edgeSpeed = (distance) => {
+        const ratio = Math.max(0, Math.min(1, (threshold - distance) / threshold));
+        return maxSpeed * ratio * ratio;
+      };
+      let x = 0;
+      let y = 0;
+      if (clientX < rect.left + threshold) x = edgeSpeed(clientX - rect.left);
+      else if (clientX > rect.right - threshold) x = -edgeSpeed(rect.right - clientX);
+      if (clientY < rect.top + threshold) y = edgeSpeed(clientY - rect.top);
+      else if (clientY > rect.bottom - threshold) y = -edgeSpeed(rect.bottom - clientY);
+      return { x, y };
+    }
+
+    function startAssignmentCanvasAutoPan() {
+      if (assignmentCanvasAutoPanFrame) return;
+      const step = () => {
+        const canvasState = ensureAssignmentCanvasState();
+        const drag = canvasState.drag;
+        if (!drag || drag.type !== 'student') {
+          assignmentCanvasAutoPanFrame = null;
+          return;
+        }
+        const delta = getAssignmentCanvasAutoPanDelta(drag.lastClientX || 0, drag.lastClientY || 0);
+        if (delta.x || delta.y) {
+          canvasState.panX += delta.x;
+          canvasState.panY += delta.y;
+          updateAssignmentDragPositionFromClient(drag.lastClientX || 0, drag.lastClientY || 0);
+          renderAssignmentCanvasView();
+        }
+        assignmentCanvasAutoPanFrame = requestAnimationFrame(step);
+      };
+      assignmentCanvasAutoPanFrame = requestAnimationFrame(step);
+    }
+
+    function focusAssignmentStudent(studentId) {
+      const canvasState = ensureAssignmentCanvasState();
+      canvasState.focusStudentId = studentId || null;
+      canvasState.focusProjectId = null;
+      state.selectedResultStudents = studentId ? [studentId] : [];
+      if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+      renderAssignmentCanvasView();
+    }
+
+    function focusAssignmentProject(projectId) {
+      const canvasState = ensureAssignmentCanvasState();
+      canvasState.focusProjectId = projectId || null;
+      canvasState.focusStudentId = null;
+      state.selectedResultStudents = [];
+      if (state.resultViewAssignments) renderProjectResults(state.resultViewAssignments);
+      renderAssignmentCanvasView();
+    }
+
     function toggleProjectResultCard(projectId) {
       if (!state.resultViewAssignments) return;
       const open = [...(state.openResultProjects || [])];
@@ -8846,6 +9415,7 @@
         state.openWishSections = [];
         state.selectedResultStudents = [];
         els.projectResultsWrap.innerHTML = '<div class="muted small" style="padding:12px">Noch kein Ergebnis vorhanden.</div>';
+        renderAssignmentCanvasView();
         return;
       }
       const validProjectIds = new Set(state.data.projects.map(project => project.id));
@@ -9035,6 +9605,7 @@
         </div>
         ${details ? `<div class="project-focus-grid">${details}</div>` : '<div class="analysis-note" style="margin-top:16px">Noch kein Projekt geöffnet. Klicke oben auf einen Projektnamen, um die zugeordneten Schüler anzuzeigen.</div>'}
       `;
+      renderAssignmentCanvasView();
     }
 
     function renderStudentResults(assignments) {
@@ -9074,6 +9645,7 @@
       document.querySelectorAll('.tab-panel').forEach((panel) => {
         panel.classList.toggle('active', panel.id === targetId);
       });
+      if (targetId === 'tabAssignment') requestAnimationFrame(() => renderAssignmentCanvasView());
     }
 
     function initSidebarNavigation() {
@@ -12769,6 +13341,122 @@
       if (els.exportStudentListExcelBtn) els.exportStudentListExcelBtn.addEventListener('click', exportStudentListWorkbook);
       if (els.printStudentListBtn) els.printStudentListBtn.addEventListener('click', () => printNamedReport('studentList'));
       if (els.exportProjectComparisonPdfBtn) els.exportProjectComparisonPdfBtn.addEventListener('click', exportProjectComparisonPdf);
+      if (els.assignmentCanvas) {
+        els.assignmentCanvas.addEventListener('wheel', (event) => {
+          event.preventDefault();
+          const point = getAssignmentCanvasPoint(event);
+          const factor = event.deltaY < 0 ? 1.08 : 0.92;
+          setAssignmentZoom(ensureAssignmentCanvasState().zoom * factor, point);
+        }, { passive: false });
+        els.assignmentCanvas.addEventListener('mousedown', (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const point = getAssignmentCanvasPoint(event);
+          const studentHit = hitAssignmentStudent(point);
+          const headerHit = hitAssignmentProjectHeader(point);
+          const canvasState = ensureAssignmentCanvasState();
+          if (studentHit) {
+            canvasState.drag = {
+              type: 'student',
+              studentId: studentHit.studentId,
+              studentName: studentHit.studentName,
+              sourceProjectId: studentHit.projectId,
+              startScreenX: point.screenX,
+              startScreenY: point.screenY,
+              lastClientX: event.clientX,
+              lastClientY: event.clientY,
+              x: point.x,
+              y: point.y,
+              moved: false,
+              dropProjectId: ''
+            };
+            state.resultDragStudentIds = [studentHit.studentId];
+            if (els.assignmentCanvasWrap) els.assignmentCanvasWrap.classList.add('dragging-student');
+            startAssignmentCanvasAutoPan();
+          } else {
+            canvasState.drag = {
+              type: 'pan',
+              startScreenX: point.screenX,
+              startScreenY: point.screenY,
+              startPanX: canvasState.panX,
+              startPanY: canvasState.panY,
+              moved: false
+            };
+            if (headerHit) canvasState.drag.headerProjectId = headerHit.projectId;
+          }
+        });
+        els.assignmentCanvas.addEventListener('mouseleave', () => {
+          els.assignmentCanvas.title = '';
+        });
+        window.addEventListener('mousemove', (event) => {
+          const canvasState = ensureAssignmentCanvasState();
+          const drag = canvasState.drag;
+          if (!drag) {
+            updateAssignmentCanvasTooltip(event);
+            return;
+          }
+          const point = getAssignmentCanvasPoint(event);
+          const dx = point.screenX - drag.startScreenX;
+          const dy = point.screenY - drag.startScreenY;
+          if (Math.hypot(dx, dy) > 4) drag.moved = true;
+          if (drag.type === 'pan') {
+            canvasState.panX = drag.startPanX + dx;
+            canvasState.panY = drag.startPanY + dy;
+          } else if (drag.type === 'student') {
+            updateAssignmentDragPositionFromClient(event.clientX, event.clientY);
+          }
+          renderAssignmentCanvasView();
+        });
+        window.addEventListener('mouseup', () => {
+          const canvasState = ensureAssignmentCanvasState();
+          const drag = canvasState.drag;
+          if (!drag) return;
+          stopAssignmentCanvasAutoPan();
+          canvasState.drag = null;
+          state.resultDragStudentIds = [];
+          if (els.assignmentCanvasWrap) els.assignmentCanvasWrap.classList.remove('dragging-student');
+          if (drag.type === 'student') {
+            if (drag.moved && drag.dropProjectId && drag.dropProjectId !== drag.sourceProjectId) {
+              applyManualProjectMove(drag.dropProjectId, [drag.studentId]);
+            } else {
+              focusAssignmentStudent(drag.studentId);
+            }
+          } else {
+            if (!drag.moved && drag.headerProjectId) focusAssignmentProject(drag.headerProjectId);
+            renderAssignmentCanvasView();
+          }
+        });
+      }
+      if (els.assignmentZoomSlider) {
+        els.assignmentZoomSlider.addEventListener('input', () => {
+          setAssignmentZoom(Number(els.assignmentZoomSlider.value || 100) / 100);
+        });
+      }
+      if (els.assignmentZoomInBtn) {
+        els.assignmentZoomInBtn.addEventListener('click', () => setAssignmentZoom(ensureAssignmentCanvasState().zoom * 1.15));
+      }
+      if (els.assignmentZoomOutBtn) {
+        els.assignmentZoomOutBtn.addEventListener('click', () => setAssignmentZoom(ensureAssignmentCanvasState().zoom / 1.15));
+      }
+      if (els.assignmentResetViewBtn) {
+        els.assignmentResetViewBtn.addEventListener('click', resetAssignmentCanvasView);
+      }
+      if (els.assignmentToggleSameClassBtn) {
+        els.assignmentToggleSameClassBtn.addEventListener('click', () => {
+          const canvasState = ensureAssignmentCanvasState();
+          canvasState.highlightSameClass = !canvasState.highlightSameClass;
+          renderAssignmentCanvasView();
+        });
+      }
+      if (els.assignmentToggleSameWishesBtn) {
+        els.assignmentToggleSameWishesBtn.addEventListener('click', () => {
+          const canvasState = ensureAssignmentCanvasState();
+          canvasState.highlightSameWishes = !canvasState.highlightSameWishes;
+          renderAssignmentCanvasView();
+        });
+      }
+      window.addEventListener('resize', () => renderAssignmentCanvasView());
       if (els.projectResultsWrap) {
         els.projectResultsWrap.addEventListener('mousedown', (event) => {
           if (event.button !== 0) return;
@@ -12960,6 +13648,8 @@
       }, { passive: false });
       document.addEventListener('click', (event) => {
         const insideResults = event.target.closest('#projectResultsWrap');
+        const insideAssignment = event.target.closest('#assignmentCanvasWrap');
+        if (insideAssignment) return;
         if (insideResults) {
           if (event.target.closest('#projectResultsWrap .student-chip')) return;
           if (event.target.closest('.result-search-panel, .result-search-toggle-row, #resultSearchInput, [data-result-search-suggestion]')) return;
