@@ -10856,6 +10856,7 @@
       const compact = !!options.compact;
       return sortProjectsByNumber(state.data.projects).map((project) => {
         const idx = state.data.projects.findIndex((entry) => entry.id === project.id);
+        const projectNumber = getProjectDisplayNumber(project, idx);
         const rows = getSortedAssignmentRowsForProject(project.id).map((row) => {
           const className = getStudentDisplayClass(row.studentId);
           const wished = (state.data.choiceMap.get(row.studentId) || new Set()).has(project.id);
@@ -10864,8 +10865,9 @@
         const header = includeWished ? ['Klasse', 'Name', 'gewünscht'] : ['Klasse', 'Name'];
         const emptyRow = includeWished ? ['—', 'Keine zugeordneten Schüler', ''] : ['—', 'Keine zugeordneten Schüler'];
         return {
-          sheetName: `P${getProjectDisplayNumber(project, idx)} ${project.name}`,
-          title: `Projekt #${getProjectDisplayNumber(project, idx)} – ${project.name}`,
+          sheetName: `P${projectNumber} ${project.name}`,
+          title: `Projekt #${projectNumber} – ${project.name}`,
+          pdfTitle: `Projekt ${projectNumber} ${project.name}`,
           aoa: [header, ...(rows.length ? rows : [emptyRow])],
           compactRows: compact,
           printClass: compact ? 'compact-project-list' : ''
@@ -11310,13 +11312,21 @@
       return { PDFLib: window.PDFLib, JSZip: window.JSZip };
     }
 
-    function getCompactPdfTableSizing(rowCount, pageHeight, margin, titleSize, headerGap) {
-      const usableHeight = pageHeight - margin * 2 - titleSize - headerGap - 18;
-      const neededRows = Math.max(1, Number(rowCount || 0) + 1);
-      const rowHeight = Math.max(8, Math.min(16, Math.floor(usableHeight / neededRows)));
-      const rowSize = getExportNameFontSize();
-      const headerSize = Math.min(9, rowSize + 0.8);
-      return { rowHeight, rowSize, headerSize };
+    function cssPxToPdfPt(px) {
+      return Number(px || 0) * 0.75;
+    }
+
+    function mmToPdfPt(mm) {
+      return Number(mm || 0) * 72 / 25.4;
+    }
+
+    function getCompactPdfTableSizing() {
+      const cssFontPx = 9 * (getExportNameFontSize() / 9);
+      const rowSize = cssPxToPdfPt(cssFontPx);
+      const lineHeight = rowSize * 1.08;
+      const verticalPadding = cssPxToPdfPt(4);
+      const rowHeight = Math.max(cssPxToPdfPt(8), lineHeight + verticalPadding);
+      return { rowHeight, rowSize, headerSize: rowSize };
     }
 
     function sanitizeFilenamePart(value) {
@@ -11390,15 +11400,20 @@
       const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const pageWidth = 595.28;
       const pageHeight = 841.89;
-      const margin = 38;
-      const titleSize = 16;
-      const headerGap = 10;
+      const margin = mmToPdfPt(12);
+      const titleSize = cssPxToPdfPt(16);
+      const titleGap = cssPxToPdfPt(6);
+      const cellPaddingX = cssPxToPdfPt(4);
+      const borderWidth = 0.75;
+      const textColor = rgb(0.067, 0.094, 0.153);
+      const headerBg = rgb(0.933, 0.949, 1);
+      const lineColor = rgb(0.847, 0.871, 0.918);
       const aoa = Array.isArray(section?.aoa) ? section.aoa : [['Keine Daten vorhanden']];
       const header = Array.isArray(aoa[0]) ? aoa[0] : ['Wert'];
       const rows = aoa.slice(1).map((row) => Array.isArray(row) ? row : [row]);
       const sizing = section?.compactRows
-        ? getCompactPdfTableSizing(rows.length, pageHeight, margin, titleSize, headerGap)
-        : { rowHeight: 16, rowSize: 9, headerSize: 10 };
+        ? getCompactPdfTableSizing()
+        : { rowHeight: cssPxToPdfPt(13 * 1.4 + 16), rowSize: cssPxToPdfPt(12), headerSize: cssPxToPdfPt(12) };
       const { rowHeight, rowSize, headerSize } = sizing;
       const colCount = Math.max(1, header.length);
       const maxLens = new Array(colCount).fill(8);
@@ -11418,36 +11433,34 @@
       const addPage = () => {
         page = pdfDoc.addPage([pageWidth, pageHeight]);
         y = pageHeight - margin;
-        page.drawText(normalizePdfText(section?.title || 'Export'), {
+        page.drawText(normalizePdfText(section?.pdfTitle || section?.title || 'Export'), {
           x: margin,
           y,
           size: titleSize,
           font: bold,
-          color: rgb(0.11, 0.16, 0.22)
+          color: textColor
         });
-        y -= (titleSize + headerGap + 6);
+        y -= (titleSize + titleGap + rowHeight);
         let x = margin;
-        page.drawRectangle({ x: margin, y: y - 3, width: availableWidth, height: rowHeight, color: rgb(0.93, 0.95, 0.98) });
+        page.drawRectangle({ x: margin, y, width: availableWidth, height: rowHeight, color: headerBg });
+        page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: borderWidth, color: lineColor });
         header.forEach((cell, index) => {
-          const text = fitTextToWidth(bold, cell, headerSize, Math.max(24, widths[index] - 6));
-          page.drawText(text, { x: x + 3, y: y + 1, size: headerSize, font: bold, color: rgb(0.11, 0.16, 0.22) });
+          const text = fitTextToWidth(bold, cell, headerSize, Math.max(24, widths[index] - cellPaddingX * 2));
+          page.drawText(text, { x: x + cellPaddingX, y: y + (rowHeight - headerSize) / 2, size: headerSize, font: bold, color: textColor });
           x += widths[index];
         });
-        y -= (rowHeight + 3);
+        y -= rowHeight;
       };
       addPage();
-      rows.forEach((row, rowIndex) => {
+      rows.forEach((row) => {
         if (y < margin + rowHeight) addPage();
-        if (rowIndex % 2 === 1) {
-          page.drawRectangle({ x: margin, y: y - 2, width: availableWidth, height: rowHeight, color: rgb(0.985, 0.988, 0.995) });
-        }
+        page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: borderWidth, color: lineColor });
         let x = margin;
         for (let i = 0; i < colCount; i += 1) {
-          const text = fitTextToWidth(font, row[i], rowSize, Math.max(24, widths[i] - 6));
-          page.drawText(text, { x: x + 3, y: y + 1, size: rowSize, font, color: rgb(0.15, 0.19, 0.25) });
+          const text = fitTextToWidth(font, row[i], rowSize, Math.max(24, widths[i] - cellPaddingX * 2));
+          page.drawText(text, { x: x + cellPaddingX, y: y + (rowHeight - rowSize) / 2, size: rowSize, font, color: textColor });
           x += widths[i];
         }
-        page.drawLine({ start: { x: margin, y: y - 3 }, end: { x: pageWidth - margin, y: y - 3 }, thickness: 0.4, color: rgb(0.86, 0.89, 0.94) });
         y -= rowHeight;
       });
       return pdfDoc.save();
